@@ -1,9 +1,13 @@
 import os
+from pathlib import Path
+import sys
 import time
 import requests
 from dotenv import load_dotenv
 
-from movie_repository import MovieRepository
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from moviekit import MovieRepository
 
 load_dotenv()
 

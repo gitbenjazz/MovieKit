@@ -1,7 +1,11 @@
 from playwright.sync_api import sync_playwright
+from pathlib import Path
+import sys
 import time
 
-from movie_repository import MovieRepository
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from moviekit import MovieRepository
 
 repository = MovieRepository()
 movies = repository.load_unwatched_1001()
