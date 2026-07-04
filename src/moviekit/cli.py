@@ -1,4 +1,7 @@
 import argparse
+from typing import Optional
+
+from .movie_repository import MovieRepository
 
 
 def _not_implemented(_args: argparse.Namespace) -> int:
@@ -6,11 +9,28 @@ def _not_implemented(_args: argparse.Namespace) -> int:
     return 0
 
 
+def sync(_args: Optional[argparse.Namespace] = None) -> int:
+    """Refresh watched/unwatched 1001 CSV outputs and print a summary."""
+    repository = MovieRepository()
+    movies, seen, unseen = repository.update_watched_1001_outputs()
+
+    print("MovieKit Sync")
+    print("-------------------")
+    print(f"Watched: {len(seen)}")
+    print(f"Remaining: {len(unseen)}")
+    print(f"Progress: {len(seen)/len(movies):.1%}")
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="moviekit")
     subparsers = parser.add_subparsers(dest="command")
 
-    for command in ("sync", "recommend", "providers", "chat"):
+    sync_parser = subparsers.add_parser("sync")
+    sync_parser.set_defaults(func=sync)
+
+    for command in ("recommend", "providers", "chat"):
         subparser = subparsers.add_parser(command)
         subparser.set_defaults(func=_not_implemented)
 
