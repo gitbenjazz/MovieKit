@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: moviekit
+Version: 0.1.0
+Summary: Local-first tools for tracking and exploring the 1001 movies list.
+Requires-Python: >=3.9
+Description-Content-Type: text/plain
+Requires-Dist: pandas
+Requires-Dist: playwright
+Requires-Dist: python-dotenv
+Requires-Dist: requests
+
+MovieKit
