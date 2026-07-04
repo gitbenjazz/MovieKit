@@ -1,0 +1,32 @@
+from playwright.sync_api import sync_playwright
+import pandas as pd
+import time
+
+movies = pd.read_csv("unwatched1001.csv")
+
+movies = movies.head(10)          # <-- test with only 10 movies
+
+with sync_playwright() as p:
+
+    browser = p.chromium.launch(headless=False)
+
+    page = browser.new_page()
+
+    for _, movie in movies.iterrows():
+
+        title = movie["title"]
+
+        print("="*60)
+        print(title)
+
+        search = title.split("(")[0].strip()
+
+        url = f"https://www.justwatch.com/us/search?q={search}"
+
+        page.goto(url)
+
+        time.sleep(5)
+
+        print(page.title())
+
+    browser.close()
