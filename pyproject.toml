@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moviekit"
+version = "0.1.0"
+description = "Local-first tools for tracking and exploring the 1001 movies list."
+readme = {text = "MovieKit", content-type = "text/plain"}
+requires-python = ">=3.9"
+dependencies = [
+    "pandas",
+    "playwright",
+    "python-dotenv",
+    "requests",
+]
+
+[project.scripts]
+moviekit = "moviekit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

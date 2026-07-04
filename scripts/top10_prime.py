@@ -5,7 +5,7 @@ import time
 import requests
 from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from moviekit import MovieRepository
 
