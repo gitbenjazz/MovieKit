@@ -1,8 +1,10 @@
 from playwright.sync_api import sync_playwright
-import pandas as pd
 import time
 
-movies = pd.read_csv("unwatched1001.csv")
+from movie_repository import MovieRepository
+
+repository = MovieRepository()
+movies = repository.load_unwatched_1001()
 
 movies = movies.head(10)          # <-- test with only 10 movies
 

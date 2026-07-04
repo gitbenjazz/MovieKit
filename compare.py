@@ -1,9 +1,12 @@
 import pandas as pd
 import re
 
+from movie_repository import MovieRepository
+
 # Read data
-movies = pd.read_csv("movies.csv")
-watched = pd.read_csv("watched.csv")
+repository = MovieRepository()
+movies = repository.load_movies()
+watched = repository.load_watched()
 
 
 def split_title_year(title):

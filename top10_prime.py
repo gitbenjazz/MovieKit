@@ -1,14 +1,16 @@
 import os
 import time
 import requests
-import pandas as pd
 from dotenv import load_dotenv
+
+from movie_repository import MovieRepository
 
 load_dotenv()
 
 API_KEY = os.getenv("TMDB_API_KEY")
 
-movies = pd.read_csv("unwatched1001.csv")
+repository = MovieRepository()
+movies = repository.load_unwatched_1001()
 
 BASE = "https://api.themoviedb.org/3"
 
