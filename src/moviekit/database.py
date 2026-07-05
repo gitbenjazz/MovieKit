@@ -12,7 +12,7 @@ create table if not exists movies (
     id integer primary key,
     title text,
     year integer,
-    letterboxd_url text,
+    letterboxd_url text unique,
     tmdb_id integer,
     tmdb_title text,
     rating real,
@@ -28,7 +28,7 @@ create table if not exists watched (
     title text,
     year integer,
     watched_date text,
-    letterboxd_uri text
+    letterboxd_uri text unique
 );
 
 create table if not exists list_items (

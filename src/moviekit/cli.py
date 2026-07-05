@@ -8,17 +8,18 @@ def _not_implemented(_args: argparse.Namespace) -> int:
 
 
 def sync(_args: Optional[argparse.Namespace] = None) -> int:
-    """Refresh watched/unwatched 1001 CSV outputs and print a summary."""
-    from .movie_repository import MovieRepository
+    """Refresh CSV outputs, populate SQLite, and print a summary."""
+    from .sync_service import SyncService
 
-    repository = MovieRepository()
-    movies, seen, unseen = repository.update_watched_1001_outputs()
+    summary = SyncService().sync()
 
     print("MovieKit Sync")
     print("-------------------")
-    print(f"Watched: {len(seen)}")
-    print(f"Remaining: {len(unseen)}")
-    print(f"Progress: {len(seen)/len(movies):.1%}")
+    print(f"Watched 1001: {summary.watched_movies}")
+    print(f"Remaining 1001: {summary.remaining_movies}")
+    print(f"Progress: {summary.progress:.1%}")
+    print(f"SQLite movies synced: {summary.movies_synced}")
+    print(f"SQLite watched history synced: {summary.watched_history_synced}")
 
     return 0
 
