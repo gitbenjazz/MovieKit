@@ -1,4 +1,8 @@
+CHANGELOG.md
+README.md
 pyproject.toml
+docs/DEVELOPER_GUIDE.md
+docs/MILESTONE_1_5.md
 src/moviekit/__init__.py
 src/moviekit/cli.py
 src/moviekit/database.py
@@ -14,4 +18,5 @@ src/moviekit.egg-info/dependency_links.txt
 src/moviekit.egg-info/entry_points.txt
 src/moviekit.egg-info/requires.txt
 src/moviekit.egg-info/top_level.txt
+tests/__init__.py
 tests/test_search_command.py

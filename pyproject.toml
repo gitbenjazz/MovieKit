@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moviekit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first tools for tracking and exploring the 1001 movies list."
-readme = {text = "MovieKit", content-type = "text/plain"}
+readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "pandas",

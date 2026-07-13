@@ -1,14 +1,3 @@
-Metadata-Version: 2.4
-Name: moviekit
-Version: 0.2.0
-Summary: Local-first tools for tracking and exploring the 1001 movies list.
-Requires-Python: >=3.9
-Description-Content-Type: text/markdown
-Requires-Dist: pandas
-Requires-Dist: playwright
-Requires-Dist: python-dotenv
-Requires-Dist: requests
-
 # MovieKit
 
 MovieKit is a local-first toolkit for tracking and exploring the 1001 movies list with CSV inputs, SQLite storage, and a small command-line interface.
@@ -39,3 +28,4 @@ If the console script is not installed on your shell path, use the repository vi
 ## Development
 
 See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for schema, repository, and testing notes.
+
