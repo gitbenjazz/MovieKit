@@ -2,11 +2,16 @@ pyproject.toml
 src/moviekit/__init__.py
 src/moviekit/cli.py
 src/moviekit/database.py
+src/moviekit/database_repository.py
+src/moviekit/models.py
 src/moviekit/movie_repository.py
 src/moviekit/recommendation_service.py
+src/moviekit/search_service.py
+src/moviekit/sync_service.py
 src/moviekit.egg-info/PKG-INFO
 src/moviekit.egg-info/SOURCES.txt
 src/moviekit.egg-info/dependency_links.txt
 src/moviekit.egg-info/entry_points.txt
 src/moviekit.egg-info/requires.txt
 src/moviekit.egg-info/top_level.txt
+tests/test_search_command.py

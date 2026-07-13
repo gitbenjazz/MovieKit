@@ -1,5 +1,14 @@
 import argparse
+import re
 from typing import Optional
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+
+    return parsed
 
 
 def _not_implemented(_args: argparse.Namespace) -> int:
@@ -41,6 +50,56 @@ def recommend(_args: Optional[argparse.Namespace] = None) -> int:
     return 0
 
 
+def search(args: argparse.Namespace) -> int:
+    """Search movies in the local MovieKit database."""
+    from .search_service import SearchService
+
+    watched_filter = None
+    if args.watched:
+        watched_filter = True
+    elif args.unwatched:
+        watched_filter = False
+
+    results = SearchService().search(
+        args.text,
+        limit=args.limit,
+        watched=watched_filter,
+    )
+
+    if not results:
+        print(f'No movies found for "{args.text}".')
+        return 0
+
+    for index, result in enumerate(results):
+        if index:
+            print()
+
+        movie = result.movie
+        print(_highlight_match(movie.title, args.text))
+        print(f"Year: {movie.year if movie.year is not None else 'Unknown'}")
+        print(f"Status: {'Watched' if result.watched else 'Unwatched'}")
+
+        if movie.tmdb_id is not None:
+            print(f"TMDB ID: {movie.tmdb_id}")
+
+        print(f"Letterboxd URL: {movie.letterboxd_url}")
+
+    return 0
+
+
+def _highlight_match(value: str, text: str) -> str:
+    query = text.strip()
+    if not query:
+        return value
+
+    return re.sub(
+        re.escape(query),
+        lambda match: f"[{match.group(0)}]",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
 def init_database(_args: Optional[argparse.Namespace] = None) -> int:
     """Create the MovieKit SQLite database."""
     from .database import DEFAULT_DATABASE_PATH, initialize_database
@@ -52,6 +111,8 @@ def init_database(_args: Optional[argparse.Namespace] = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from .search_service import DEFAULT_SEARCH_LIMIT
+
     parser = argparse.ArgumentParser(prog="moviekit")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -60,6 +121,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     recommend_parser = subparsers.add_parser("recommend")
     recommend_parser.set_defaults(func=recommend)
+
+    search_parser = subparsers.add_parser("search")
+    search_parser.add_argument("text")
+    search_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=DEFAULT_SEARCH_LIMIT,
+    )
+    search_filters = search_parser.add_mutually_exclusive_group()
+    search_filters.add_argument("--watched", action="store_true")
+    search_filters.add_argument("--unwatched", action="store_true")
+    search_parser.set_defaults(func=search)
 
     db_parser = subparsers.add_parser("db")
     db_subparsers = db_parser.add_subparsers(dest="db_command")
