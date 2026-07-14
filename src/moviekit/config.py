@@ -14,6 +14,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.1
 class MovieKitConfig:
     database_path: str = "movies.db"
     default_search_limit: int = 20
+    favorite_providers: str = ""
+    acceptable_providers: str = ""
 
 
 def config_path() -> Path:
@@ -36,6 +38,14 @@ def save_config(config: MovieKitConfig) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_to_toml(asdict(config)), encoding="utf-8")
     return path
+
+
+def get_favorite_providers() -> list[str]:
+    return _parse_provider_list(load_config().favorite_providers)
+
+
+def get_acceptable_providers() -> list[str]:
+    return _parse_provider_list(load_config().acceptable_providers)
 
 
 def _config_from_dict(values: dict[str, Any]) -> MovieKitConfig:
@@ -95,3 +105,10 @@ def _to_toml(values: dict[str, Any]) -> str:
 
 def _escape_toml_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _parse_provider_list(value: str) -> list[str]:
+    if not value:
+        return []
+
+    return [provider for item in value.split(",") if (provider := item.strip())]
