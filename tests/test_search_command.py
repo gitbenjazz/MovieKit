@@ -22,6 +22,7 @@ from moviekit.database_repository import (
     MovieSummary,
 )
 from moviekit.models import MovieRecord, WatchedRecord
+from moviekit.recommendation_engine import Recommendation
 from moviekit.search_service import MovieSearchResult, SearchService
 
 
@@ -156,17 +157,20 @@ class SearchCommandTests(unittest.TestCase):
             ],
         )
 
-        with patch("moviekit.database_repository.DatabaseRepository") as repository:
-            repository.return_value.get_random_unwatched.return_value = [summary]
-            repository.return_value.get_movie_details.return_value = details
+        with patch("moviekit.recommendation_engine.RecommendationEngine") as engine:
+            engine.return_value.recommend_tonight.return_value = Recommendation(
+                movie=details,
+                score=0,
+                reasons=["Random unwatched movie"],
+                provider="Prime",
+            )
             output = StringIO()
 
             with redirect_stdout(output):
                 exit_code = cli.tonight(cli.argparse.Namespace())
 
         self.assertEqual(exit_code, 0)
-        repository.return_value.get_random_unwatched.assert_called_once_with(limit=1)
-        repository.return_value.get_movie_details.assert_called_once_with(7)
+        engine.return_value.recommend_tonight.assert_called_once_with()
         self.assertEqual(
             output.getvalue(),
             "\n".join(
@@ -180,6 +184,7 @@ class SearchCommandTests(unittest.TestCase):
                     "⏱ Runtime     : 139 min",
                     "🎬 Director    : Daniel Kwan, Daniel Scheinert",
                     "🎭 Genres      : Action, Comedy, Sci-Fi",
+                    "📺 Provider    : Prime",
                     "",
                     "🔗 Letterboxd",
                     "https://letterboxd.com/film/everything-everywhere-all-at-once/",
@@ -189,16 +194,15 @@ class SearchCommandTests(unittest.TestCase):
         )
 
     def test_tonight_command_prints_message_for_empty_library(self) -> None:
-        with patch("moviekit.database_repository.DatabaseRepository") as repository:
-            repository.return_value.get_random_unwatched.return_value = []
+        with patch("moviekit.recommendation_engine.RecommendationEngine") as engine:
+            engine.return_value.recommend_tonight.return_value = None
             output = StringIO()
 
             with redirect_stdout(output):
                 exit_code = cli.tonight(cli.argparse.Namespace())
 
         self.assertEqual(exit_code, 0)
-        repository.return_value.get_random_unwatched.assert_called_once_with(limit=1)
-        repository.return_value.get_movie_details.assert_not_called()
+        engine.return_value.recommend_tonight.assert_called_once_with()
         self.assertEqual(output.getvalue(), "No unwatched movies found.\n")
 
     def test_tonight_command_omits_unknown_fields(self) -> None:
@@ -232,9 +236,12 @@ class SearchCommandTests(unittest.TestCase):
             ],
         )
 
-        with patch("moviekit.database_repository.DatabaseRepository") as repository:
-            repository.return_value.get_random_unwatched.return_value = [summary]
-            repository.return_value.get_movie_details.return_value = details
+        with patch("moviekit.recommendation_engine.RecommendationEngine") as engine:
+            engine.return_value.recommend_tonight.return_value = Recommendation(
+                movie=details,
+                score=0,
+                reasons=["Random unwatched movie"],
+            )
             output = StringIO()
 
             with redirect_stdout(output):
@@ -283,9 +290,12 @@ class SearchCommandTests(unittest.TestCase):
             credits=[],
         )
 
-        with patch("moviekit.database_repository.DatabaseRepository") as repository:
-            repository.return_value.get_random_unwatched.return_value = [summary]
-            repository.return_value.get_movie_details.return_value = details
+        with patch("moviekit.recommendation_engine.RecommendationEngine") as engine:
+            engine.return_value.recommend_tonight.return_value = Recommendation(
+                movie=details,
+                score=0,
+                reasons=["Random unwatched movie"],
+            )
             output = StringIO()
 
             with redirect_stdout(output):

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import re
 from typing import Optional
@@ -90,26 +92,20 @@ def search(args: argparse.Namespace) -> int:
 def tonight(_args: Optional[argparse.Namespace] = None) -> int:
     """Print one random unwatched movie recommendation."""
     from .database_repository import DatabaseRepository
+    from .recommendation_engine import RecommendationEngine
 
     repository = DatabaseRepository()
-    movies = repository.get_random_unwatched(limit=1)
+    recommendation = RecommendationEngine(repository).recommend_tonight()
 
-    if not movies:
+    if recommendation is None:
         print("No unwatched movies found.")
         return 0
 
-    movie = movies[0]
-    details = repository.get_movie_details(movie.id)
-
-    if details is None:
-        print("No unwatched movies found.")
-        return 0
-
-    print(_format_tonight_recommendation(details))
+    print(_format_tonight_recommendation(recommendation.movie, recommendation.provider))
     return 0
 
 
-def _format_tonight_recommendation(details) -> str:
+def _format_tonight_recommendation(details, provider: str | None = None) -> str:
     title = _display_title(details.title)
     if _has_value(details.year):
         title = f"{title} ({details.year})"
@@ -133,6 +129,9 @@ def _format_tonight_recommendation(details) -> str:
     genres = [genre for genre in details.genres if _has_value(genre)]
     if genres:
         metadata.append(f"🎭 Genres      : {', '.join(genres)}")
+
+    if _has_value(provider):
+        metadata.append(f"📺 Provider    : {provider}")
 
     lines = [
         "🎬 Tonight's Movie",
