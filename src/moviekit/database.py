@@ -1,3 +1,4 @@
+from contextlib import closing
 import sqlite3
 from pathlib import Path
 from typing import Union
@@ -136,10 +137,11 @@ def initialize_database(path: DatabasePath = DEFAULT_DATABASE_PATH) -> Path:
     """Create the MovieKit SQLite database and return its path."""
     database_path = Path(path)
 
-    with sqlite3.connect(database_path) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        _drop_incompatible_tables(connection)
-        connection.executescript(SCHEMA)
+    with closing(sqlite3.connect(database_path)) as connection:
+        with connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            _drop_incompatible_tables(connection)
+            connection.executescript(SCHEMA)
 
     return database_path
 

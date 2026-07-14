@@ -87,6 +87,133 @@ def search(args: argparse.Namespace) -> int:
     return 0
 
 
+def tonight(_args: Optional[argparse.Namespace] = None) -> int:
+    """Print one random unwatched movie recommendation."""
+    from .database_repository import DatabaseRepository
+
+    repository = DatabaseRepository()
+    movies = repository.get_random_unwatched(limit=1)
+
+    if not movies:
+        print("No unwatched movies found.")
+        return 0
+
+    movie = movies[0]
+    details = repository.get_movie_details(movie.id)
+
+    if details is None:
+        print("No unwatched movies found.")
+        return 0
+
+    print(_format_tonight_recommendation(details))
+    return 0
+
+
+def _format_tonight_recommendation(details) -> str:
+    title = _display_title(details.title)
+    if _has_value(details.year):
+        title = f"{title} ({details.year})"
+
+    metadata = []
+
+    if _has_value(details.rating):
+        metadata.append(f"⭐ TMDb Rating : {details.rating:.1f}")
+
+    if _has_value(details.runtime):
+        metadata.append(f"⏱ Runtime     : {details.runtime} min")
+
+    directors = [
+        credit.name
+        for credit in details.credits
+        if credit.role.lower() == "director" and _has_value(credit.name)
+    ]
+    if directors:
+        metadata.append(f"🎬 Director    : {', '.join(directors)}")
+
+    genres = [genre for genre in details.genres if _has_value(genre)]
+    if genres:
+        metadata.append(f"🎭 Genres      : {', '.join(genres)}")
+
+    lines = [
+        "🎬 Tonight's Movie",
+        "────────────────────────────────",
+        "",
+        title,
+        "",
+    ]
+
+    if metadata:
+        lines.extend(metadata)
+        lines.append("")
+
+    lines.extend(
+        [
+            "🔗 Letterboxd",
+            details.letterboxd_url,
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def _has_value(value) -> bool:
+    if value is None:
+        return False
+
+    if isinstance(value, str):
+        return bool(value.strip()) and value.strip().lower() != "unknown"
+
+    return True
+
+
+def _display_title(title: str) -> str:
+    acronyms = {
+        "ii",
+        "iii",
+        "iv",
+        "v",
+        "vi",
+        "vii",
+        "viii",
+        "ix",
+        "x",
+        "tmdb",
+        "usa",
+        "uk",
+    }
+    small_words = {
+        "a",
+        "an",
+        "and",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    }
+
+    def replace(match: re.Match) -> str:
+        word = match.group(0)
+        lowered = word.lower()
+
+        if len(word) > 1 and word.isupper():
+            return word
+        if lowered in acronyms:
+            return lowered.upper()
+        if match.start() > 0 and lowered in small_words:
+            return lowered
+
+        return word[0].upper() + word[1:].lower()
+
+    return re.sub(r"[A-Za-z]+(?:'[A-Za-z]+)?", replace, title)
+
+
 def _highlight_match(value: str, text: str) -> str:
     query = text.strip()
     if not query:
@@ -121,6 +248,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     recommend_parser = subparsers.add_parser("recommend")
     recommend_parser.set_defaults(func=recommend)
+
+    tonight_parser = subparsers.add_parser("tonight")
+    tonight_parser.set_defaults(func=tonight)
 
     search_parser = subparsers.add_parser("search")
     search_parser.add_argument("text")

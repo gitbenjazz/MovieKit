@@ -151,6 +151,27 @@ class DatabaseRepository:
 
         return [self._movie_summary_from_row(row) for row in rows]
 
+    def get_random_unwatched(self, limit: int = 1) -> list[MovieSummary]:
+        if limit <= 0:
+            return []
+
+        with closing(self._read_connection()) as connection:
+            rows = connection.execute(
+                f"""
+                {self._movie_summary_select()}
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM watched
+                    WHERE watched.movie_id = movies.id
+                )
+                ORDER BY random()
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        return [self._movie_summary_from_row(row) for row in rows]
+
     def get_watched_movie_ids(self) -> set[int]:
         with closing(self._read_connection()) as connection:
             rows = connection.execute(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import closing, redirect_stdout
 from pathlib import Path
 import sqlite3
 import sys
@@ -15,7 +15,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from moviekit import cli
-from moviekit.database_repository import DatabaseRepository, MovieSummary
+from moviekit.database_repository import (
+    DatabaseRepository,
+    MovieCredit,
+    MovieDetails,
+    MovieSummary,
+)
 from moviekit.models import MovieRecord, WatchedRecord
 from moviekit.search_service import MovieSearchResult, SearchService
 
@@ -40,6 +45,13 @@ class SearchCommandTests(unittest.TestCase):
         self.assertEqual(args.limit, 5)
         self.assertTrue(args.watched)
         self.assertFalse(args.unwatched)
+
+    def test_parser_registers_tonight_command(self) -> None:
+        parser = cli.build_parser()
+
+        args = parser.parse_args(["tonight"])
+
+        self.assertIs(args.func, cli.tonight)
 
     def test_search_command_prints_friendly_message_for_no_results(self) -> None:
         with patch("moviekit.search_service.SearchService") as search_service:
@@ -102,6 +114,185 @@ class SearchCommandTests(unittest.TestCase):
                 ]
             ),
         )
+
+    def test_tonight_command_prints_random_unwatched_movie_details(self) -> None:
+        summary = MovieSummary(
+            id=7,
+            title="Everything Everywhere All at Once",
+            year=2022,
+            letterboxd_url=(
+                "https://letterboxd.com/film/everything-everywhere-all-at-once/"
+            ),
+            tmdb_id=545611,
+            tmdb_title="Everything Everywhere All at Once",
+            rating=8.0,
+            runtime=139,
+        )
+        details = MovieDetails(
+            id=7,
+            title="Everything Everywhere All at Once",
+            year=2022,
+            letterboxd_url=(
+                "https://letterboxd.com/film/everything-everywhere-all-at-once/"
+            ),
+            tmdb_id=545611,
+            tmdb_title="Everything Everywhere All at Once",
+            rating=8.0,
+            runtime=139,
+            genres=["Action", "Comedy", "Sci-Fi"],
+            credits=[
+                MovieCredit(
+                    person_id=1,
+                    name="Daniel Kwan",
+                    role="director",
+                    billing_order=1,
+                ),
+                MovieCredit(
+                    person_id=2,
+                    name="Daniel Scheinert",
+                    role="director",
+                    billing_order=2,
+                ),
+            ],
+        )
+
+        with patch("moviekit.database_repository.DatabaseRepository") as repository:
+            repository.return_value.get_random_unwatched.return_value = [summary]
+            repository.return_value.get_movie_details.return_value = details
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.tonight(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        repository.return_value.get_random_unwatched.assert_called_once_with(limit=1)
+        repository.return_value.get_movie_details.assert_called_once_with(7)
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "🎬 Tonight's Movie",
+                    "────────────────────────────────",
+                    "",
+                    "Everything Everywhere All at Once (2022)",
+                    "",
+                    "⭐ TMDb Rating : 8.0",
+                    "⏱ Runtime     : 139 min",
+                    "🎬 Director    : Daniel Kwan, Daniel Scheinert",
+                    "🎭 Genres      : Action, Comedy, Sci-Fi",
+                    "",
+                    "🔗 Letterboxd",
+                    "https://letterboxd.com/film/everything-everywhere-all-at-once/",
+                    "",
+                ]
+            ),
+        )
+
+    def test_tonight_command_prints_message_for_empty_library(self) -> None:
+        with patch("moviekit.database_repository.DatabaseRepository") as repository:
+            repository.return_value.get_random_unwatched.return_value = []
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.tonight(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        repository.return_value.get_random_unwatched.assert_called_once_with(limit=1)
+        repository.return_value.get_movie_details.assert_not_called()
+        self.assertEqual(output.getvalue(), "No unwatched movies found.\n")
+
+    def test_tonight_command_omits_unknown_fields(self) -> None:
+        summary = MovieSummary(
+            id=8,
+            title="American Gangster",
+            year=2007,
+            letterboxd_url="https://letterboxd.com/film/american-gangster/",
+            tmdb_id=None,
+            tmdb_title=None,
+            rating=None,
+            runtime=157,
+        )
+        details = MovieDetails(
+            id=8,
+            title="American Gangster",
+            year=2007,
+            letterboxd_url="https://letterboxd.com/film/american-gangster/",
+            tmdb_id=None,
+            tmdb_title=None,
+            rating=None,
+            runtime=157,
+            genres=[],
+            credits=[
+                MovieCredit(
+                    person_id=1,
+                    name="Unknown",
+                    role="director",
+                    billing_order=1,
+                )
+            ],
+        )
+
+        with patch("moviekit.database_repository.DatabaseRepository") as repository:
+            repository.return_value.get_random_unwatched.return_value = [summary]
+            repository.return_value.get_movie_details.return_value = details
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.tonight(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "🎬 Tonight's Movie",
+                    "────────────────────────────────",
+                    "",
+                    "American Gangster (2007)",
+                    "",
+                    "⏱ Runtime     : 157 min",
+                    "",
+                    "🔗 Letterboxd",
+                    "https://letterboxd.com/film/american-gangster/",
+                    "",
+                ]
+            ),
+        )
+
+    def test_tonight_command_formats_database_title_for_display(self) -> None:
+        summary = MovieSummary(
+            id=9,
+            title="i know where i'm going!",
+            year=1945,
+            letterboxd_url="https://letterboxd.com/film/i-know-where-im-going/",
+            tmdb_id=None,
+            tmdb_title=None,
+            rating=None,
+            runtime=None,
+        )
+        details = MovieDetails(
+            id=9,
+            title="i know where i'm going!",
+            year=1945,
+            letterboxd_url="https://letterboxd.com/film/i-know-where-im-going/",
+            tmdb_id=None,
+            tmdb_title=None,
+            rating=None,
+            runtime=None,
+            genres=[],
+            credits=[],
+        )
+
+        with patch("moviekit.database_repository.DatabaseRepository") as repository:
+            repository.return_value.get_random_unwatched.return_value = [summary]
+            repository.return_value.get_movie_details.return_value = details
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.tonight(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("I Know Where I'm Going! (1945)", output.getvalue())
 
     def test_search_service_sorts_by_match_then_year_and_marks_watched(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -207,22 +398,23 @@ class SearchCommandTests(unittest.TestCase):
                     )
                 ]
             )
-            with sqlite3.connect(database_path) as connection:
-                connection.execute(
-                    """
-                    INSERT INTO movies (
-                        title,
-                        year,
-                        letterboxd_url
+            with closing(sqlite3.connect(database_path)) as connection:
+                with connection:
+                    connection.execute(
+                        """
+                        INSERT INTO movies (
+                            title,
+                            year,
+                            letterboxd_url
+                        )
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            "The Godfather Part II",
+                            1974,
+                            "https://boxd.it/2aNq",
+                        ),
                     )
-                    VALUES (?, ?, ?)
-                    """,
-                    (
-                        "The Godfather Part II",
-                        1974,
-                        "https://boxd.it/2aNq",
-                    ),
-                )
             repository.save_watched(
                 [
                     WatchedRecord(
@@ -241,7 +433,7 @@ class SearchCommandTests(unittest.TestCase):
             )
 
             results = SearchService(repository).search("godfather")
-            with sqlite3.connect(database_path) as connection:
+            with closing(sqlite3.connect(database_path)) as connection:
                 watched_rows = connection.execute(
                     """
                     SELECT watched.movie_id, movies.letterboxd_url
