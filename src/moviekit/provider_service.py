@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 from contextlib import closing
-from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 from typing import Iterable, Union
 
 from .database import DEFAULT_DATABASE_PATH, initialize_database
+from .provider_backend import (
+    NullProviderBackend,
+    ProviderAvailability,
+    ProviderBackend,
+)
 
 DatabasePath = Union[str, Path]
-
-
-@dataclass(frozen=True)
-class ProviderAvailability:
-    provider_name: str
-    country_code: str = "US"
-    access_type: str = "flatrate"
-    fetched_at: str | None = None
 
 
 class ProviderService:
@@ -31,10 +27,25 @@ class ProviderService:
         "lacinetek": "LaCinetek",
     }
 
-    def __init__(self, database: object = DEFAULT_DATABASE_PATH):
+    def __init__(
+        self,
+        database: object = DEFAULT_DATABASE_PATH,
+        backend: ProviderBackend | None = None,
+    ):
         database_path = getattr(database, "database_path", database)
         self.database_path = Path(database_path)
+        self._backend = backend or NullProviderBackend()
         initialize_database(self.database_path)
+
+    def search_movie_availability(self, movie) -> list[ProviderAvailability]:
+        return list(
+            self._availability_records(
+                self._backend.search_movie_availability(movie),
+            )
+        )
+
+    def backend_name(self) -> str:
+        return self._backend.backend_name()
 
     def get_movie_availability(self, movie) -> list[ProviderAvailability]:
         movie_id = self._movie_id(movie)

@@ -17,7 +17,93 @@ from moviekit.models import MovieRecord
 from moviekit.provider_service import ProviderAvailability, ProviderService
 
 
+class FakeProviderBackend:
+    def __init__(self, availability: list[ProviderAvailability]):
+        self.availability = availability
+        self.searched_movies = []
+
+    def search_movie_availability(self, movie) -> list[ProviderAvailability]:
+        self.searched_movies.append(movie)
+        return self.availability
+
+    def backend_name(self) -> str:
+        return "fake"
+
+
 class ProviderServiceTests(unittest.TestCase):
+    def test_default_backend_is_null_provider_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            service = ProviderService(Path(directory) / "movies.db")
+
+            self.assertEqual(service.backend_name(), "null")
+
+    def test_search_movie_availability_uses_injected_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeProviderBackend(
+                [
+                    ProviderAvailability(
+                        provider_name=" Amazon   Prime Video ",
+                        country_code="us",
+                        access_type="FLATRATE",
+                        fetched_at="2026-07-15T12:00:00",
+                    )
+                ]
+            )
+            service = ProviderService(Path(directory) / "movies.db", backend=backend)
+            movie = object()
+
+            availability = service.search_movie_availability(movie)
+
+            self.assertEqual(backend.searched_movies, [movie])
+            self.assertEqual(service.backend_name(), "fake")
+            self.assertEqual(len(availability), 1)
+            self.assertEqual(availability[0].provider_name, "Prime")
+            self.assertEqual(availability[0].country_code, "US")
+            self.assertEqual(availability[0].access_type, "flatrate")
+            self.assertEqual(availability[0].fetched_at, "2026-07-15T12:00:00")
+
+    def test_backend_substitution_returns_backend_specific_availability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first_backend = FakeProviderBackend(
+                [ProviderAvailability(provider_name="Prime")]
+            )
+            second_backend = FakeProviderBackend(
+                [ProviderAvailability(provider_name="Tubi")]
+            )
+
+            first_service = ProviderService(
+                Path(directory) / "movies.db",
+                backend=first_backend,
+            )
+            second_service = ProviderService(
+                Path(directory) / "movies.db",
+                backend=second_backend,
+            )
+
+            self.assertEqual(
+                [
+                    availability.provider_name
+                    for availability in first_service.search_movie_availability(1)
+                ],
+                ["Prime"],
+            )
+            self.assertEqual(
+                [
+                    availability.provider_name
+                    for availability in second_service.search_movie_availability(1)
+                ],
+                ["Tubi"],
+            )
+
+    def test_search_movie_availability_returns_empty_list_with_empty_backend(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            service = ProviderService(Path(directory) / "movies.db")
+
+            self.assertEqual(service.search_movie_availability(object()), [])
+            self.assertEqual(self._count(directory, "availability"), 0)
+
     def test_normalize_provider_name_strips_whitespace_and_aliases_names(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             service = ProviderService(Path(directory) / "movies.db")
