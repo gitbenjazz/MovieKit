@@ -1,11 +1,10 @@
-import os
 import time
 from typing import List, Optional
 
 import requests
-from dotenv import load_dotenv
 
 from .movie_repository import MovieRepository
+from .tmdb_client import load_tmdb_api_key
 
 BASE = "https://api.themoviedb.org/3"
 
@@ -61,10 +60,8 @@ def top_recommended_unwatched_movies(
     verbose: bool = True,
 ) -> List[str]:
     """Return the first unwatched 1001 movies available on Prime Video."""
-    load_dotenv()
-
     if api_key is None:
-        api_key = os.getenv("TMDB_API_KEY")
+        api_key = load_tmdb_api_key()
 
     if repository is None:
         repository = MovieRepository()
