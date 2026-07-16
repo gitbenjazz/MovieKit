@@ -22,8 +22,10 @@ from moviekit.database_repository import (
     MovieSummary,
 )
 from moviekit.models import MovieRecord, WatchedRecord
+from moviekit.provider_backend import ProviderAvailability
 from moviekit.recommendation_engine import Recommendation
 from moviekit.search_service import MovieSearchResult, SearchService
+from moviekit.sync_service import SyncResult
 
 
 class SearchCommandTests(unittest.TestCase):
@@ -53,6 +55,14 @@ class SearchCommandTests(unittest.TestCase):
         args = parser.parse_args(["tonight"])
 
         self.assertIs(args.func, cli.tonight)
+
+    def test_parser_registers_availability_sync_command(self) -> None:
+        parser = cli.build_parser()
+
+        args = parser.parse_args(["availability", "sync", "Alien"])
+
+        self.assertEqual(args.title, "Alien")
+        self.assertIs(args.func, cli.availability_sync)
 
     def test_search_command_prints_friendly_message_for_no_results(self) -> None:
         with patch("moviekit.search_service.SearchService") as search_service:
@@ -116,19 +126,225 @@ class SearchCommandTests(unittest.TestCase):
             ),
         )
 
-    def test_tonight_command_prints_random_unwatched_movie_details(self) -> None:
-        summary = MovieSummary(
-            id=7,
-            title="Everything Everywhere All at Once",
-            year=2022,
-            letterboxd_url=(
-                "https://letterboxd.com/film/everything-everywhere-all-at-once/"
-            ),
-            tmdb_id=545611,
-            tmdb_title="Everything Everywhere All at Once",
-            rating=8.0,
-            runtime=139,
+    def test_availability_sync_command_prints_successful_summary(self) -> None:
+        movie = MovieSummary(
+            id=1,
+            title="Alien",
+            year=1979,
+            letterboxd_url="https://letterboxd.com/film/alien/",
+            tmdb_id=348,
+            tmdb_title="Alien",
+            rating=None,
+            runtime=None,
         )
+        availability = [
+            ProviderAvailability(
+                provider_name="Prime Video",
+                country_code="US",
+                access_type="subscription",
+            ),
+            ProviderAvailability(
+                provider_name="Apple TV",
+                country_code="US",
+                access_type="rent",
+            ),
+            ProviderAvailability(
+                provider_name="Fandango at Home",
+                country_code="US",
+                access_type="buy",
+            ),
+        ]
+
+        output, sync_service, provider_service = self._run_availability_sync(
+            movie=movie,
+            sync_result=SyncResult(
+                movie_title="Alien",
+                movie_id=1,
+                providers_discovered=[
+                    "Prime Video",
+                    "Apple TV",
+                    "Fandango at Home",
+                ],
+                providers_inserted=[
+                    "Prime Video",
+                    "Apple TV",
+                    "Fandango at Home",
+                ],
+                availability_records_written=3,
+                success=True,
+            ),
+            availability=availability,
+        )
+
+        sync_service.return_value.sync_movie.assert_called_once_with(movie)
+        provider_service.return_value.get_movie_availability.assert_called_once_with(1)
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "Synced:",
+                    "Alien (1979)",
+                    "",
+                    "Providers:",
+                    "✓ Prime Video (subscription)",
+                    "✓ Apple TV (rent)",
+                    "✓ Fandango at Home (buy)",
+                    "",
+                ]
+            ),
+        )
+
+    def test_availability_sync_command_prints_movie_not_found(self) -> None:
+        with patch("moviekit.database_repository.DatabaseRepository"), patch(
+            "moviekit.search_service.SearchService"
+        ) as search_service, patch(
+            "moviekit.provider_service.ProviderService"
+        ) as provider_service, patch(
+            "moviekit.sync_service.SyncService"
+        ) as sync_service, patch(
+            "moviekit.tmdb_provider_backend.TMDbProviderBackend"
+        ):
+            search_service.return_value.search.return_value = []
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.availability_sync(
+                    cli.argparse.Namespace(title="Missing")
+                )
+
+        self.assertEqual(exit_code, 0)
+        provider_service.assert_not_called()
+        sync_service.assert_not_called()
+        self.assertEqual(output.getvalue(), 'No local movie found for "Missing".\n')
+
+    def test_availability_sync_command_prints_no_availability(self) -> None:
+        movie = MovieSummary(
+            id=1,
+            title="Alien",
+            year=1979,
+            letterboxd_url="https://letterboxd.com/film/alien/",
+            tmdb_id=348,
+            tmdb_title="Alien",
+            rating=None,
+            runtime=None,
+        )
+
+        output, _sync_service, provider_service = self._run_availability_sync(
+            movie=movie,
+            sync_result=SyncResult(
+                movie_title="Alien",
+                movie_id=1,
+                providers_discovered=[],
+                providers_inserted=[],
+                availability_records_written=0,
+                success=True,
+                error_message="No availability returned",
+            ),
+            availability=[],
+        )
+
+        provider_service.return_value.get_movie_availability.assert_not_called()
+        self.assertEqual(output.getvalue(), "No streaming availability found.\n")
+
+    def test_availability_sync_command_prints_backend_failure(self) -> None:
+        movie = MovieSummary(
+            id=1,
+            title="Alien",
+            year=1979,
+            letterboxd_url="https://letterboxd.com/film/alien/",
+            tmdb_id=348,
+            tmdb_title="Alien",
+            rating=None,
+            runtime=None,
+        )
+
+        output, _sync_service, provider_service = self._run_availability_sync(
+            movie=movie,
+            sync_result=SyncResult(
+                movie_title="Alien",
+                movie_id=1,
+                providers_discovered=[],
+                providers_inserted=[],
+                availability_records_written=0,
+                success=False,
+                error_message="TMDb request failed",
+            ),
+            availability=[],
+        )
+
+        provider_service.return_value.get_movie_availability.assert_not_called()
+        self.assertEqual(
+            output.getvalue(),
+            "Could not sync availability for Alien (1979).\n"
+            "TMDb request failed\n",
+        )
+
+    def test_availability_sync_command_prints_authentication_failure(self) -> None:
+        movie = MovieSummary(
+            id=1,
+            title="Alien",
+            year=1979,
+            letterboxd_url="https://letterboxd.com/film/alien/",
+            tmdb_id=348,
+            tmdb_title="Alien",
+            rating=None,
+            runtime=None,
+        )
+
+        output, _sync_service, _provider_service = self._run_availability_sync(
+            movie=movie,
+            sync_result=SyncResult(
+                movie_title="Alien",
+                movie_id=1,
+                providers_discovered=[],
+                providers_inserted=[],
+                availability_records_written=0,
+                success=False,
+                error_message="TMDb authentication failed",
+            ),
+            availability=[],
+        )
+
+        self.assertEqual(
+            output.getvalue(),
+            "Could not sync availability for Alien (1979).\n"
+            "TMDb authentication failed\n",
+        )
+
+    def _run_availability_sync(
+        self,
+        movie: MovieSummary,
+        sync_result: SyncResult,
+        availability: list[ProviderAvailability],
+    ):
+        with patch("moviekit.database_repository.DatabaseRepository"), patch(
+            "moviekit.search_service.SearchService"
+        ) as search_service, patch(
+            "moviekit.provider_service.ProviderService"
+        ) as provider_service, patch(
+            "moviekit.sync_service.SyncService"
+        ) as sync_service, patch(
+            "moviekit.tmdb_provider_backend.TMDbProviderBackend"
+        ):
+            search_service.return_value.search.return_value = [
+                MovieSearchResult(movie=movie, watched=False)
+            ]
+            sync_service.return_value.sync_movie.return_value = sync_result
+            provider_service.return_value.get_movie_availability.return_value = (
+                availability
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.availability_sync(
+                    cli.argparse.Namespace(title=movie.title)
+                )
+
+        self.assertEqual(exit_code, 0)
+        search_service.return_value.search.assert_called_once_with(movie.title, limit=1)
+        return output, sync_service, provider_service
+
+    def test_tonight_command_prints_random_unwatched_movie_details(self) -> None:
         details = MovieDetails(
             id=7,
             title="Everything Everywhere All at Once",

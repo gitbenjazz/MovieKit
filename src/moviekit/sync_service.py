@@ -44,10 +44,6 @@ class SyncService:
         database_repository: DatabaseRepository | None = None,
         provider_service: ProviderService | None = None,
     ):
-        if movie_repository is None:
-            from .movie_repository import MovieRepository
-
-            movie_repository = MovieRepository()
         if database_repository is None:
             from .database_repository import DatabaseRepository
 
@@ -60,10 +56,16 @@ class SyncService:
         )
 
     def sync(self) -> SyncSummary:
-        movies, seen, unseen = self.movie_repository.update_watched_1001_outputs()
+        movie_repository = self.movie_repository
+        if movie_repository is None:
+            from .movie_repository import MovieRepository
 
-        movie_records = self.movie_repository.movie_records()
-        watched_records = self.movie_repository.watched_records()
+            movie_repository = MovieRepository()
+
+        movies, seen, unseen = movie_repository.update_watched_1001_outputs()
+
+        movie_records = movie_repository.movie_records()
+        watched_records = movie_repository.watched_records()
 
         self.database_repository.save_movies(movie_records)
         self.database_repository.save_watched(watched_records)

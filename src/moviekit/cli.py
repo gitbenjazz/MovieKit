@@ -89,6 +89,51 @@ def search(args: argparse.Namespace) -> int:
     return 0
 
 
+def availability_sync(args: argparse.Namespace) -> int:
+    """Synchronize streaming availability for one local movie."""
+    from .database_repository import DatabaseRepository
+    from .provider_service import ProviderService
+    from .search_service import SearchService
+    from .sync_service import SyncService
+    from .tmdb_provider_backend import TMDbProviderBackend
+
+    repository = DatabaseRepository()
+    results = SearchService(repository).search(args.title, limit=1)
+    if not results:
+        print(f'No local movie found for "{args.title}".')
+        return 0
+
+    movie = results[0].movie
+    provider_service = ProviderService(
+        repository,
+        backend=TMDbProviderBackend(),
+    )
+    result = SyncService(
+        database_repository=repository,
+        provider_service=provider_service,
+    ).sync_movie(movie)
+
+    if not result.success:
+        print(f"Could not sync availability for {_format_movie_title(movie)}.")
+        if result.error_message:
+            print(result.error_message)
+        return 0
+
+    if result.availability_records_written == 0:
+        print("No streaming availability found.")
+        return 0
+
+    availability = provider_service.get_movie_availability(movie.id)
+    print("Synced:")
+    print(_format_movie_title(movie))
+    print()
+    print("Providers:")
+    for record in availability:
+        print(f"✓ {record.provider_name} ({record.access_type})")
+
+    return 0
+
+
 def tonight(_args: Optional[argparse.Namespace] = None) -> int:
     """Print one random unwatched movie recommendation."""
     from .database_repository import DatabaseRepository
@@ -105,10 +150,16 @@ def tonight(_args: Optional[argparse.Namespace] = None) -> int:
     return 0
 
 
+def _format_movie_title(movie) -> str:
+    title = _display_title(movie.title)
+    if _has_value(movie.year):
+        return f"{title} ({movie.year})"
+
+    return title
+
+
 def _format_tonight_recommendation(details, provider: str | None = None) -> str:
-    title = _display_title(details.title)
-    if _has_value(details.year):
-        title = f"{title} ({details.year})"
+    title = _format_movie_title(details)
 
     metadata = []
 
@@ -268,6 +319,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     db_init_parser = db_subparsers.add_parser("init")
     db_init_parser.set_defaults(func=init_database)
+
+    availability_parser = subparsers.add_parser("availability")
+    availability_subparsers = availability_parser.add_subparsers(
+        dest="availability_command"
+    )
+
+    availability_sync_parser = availability_subparsers.add_parser("sync")
+    availability_sync_parser.add_argument("title")
+    availability_sync_parser.set_defaults(func=availability_sync)
 
     for command in ("providers", "chat"):
         subparser = subparsers.add_parser(command)
