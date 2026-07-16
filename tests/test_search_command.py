@@ -21,6 +21,7 @@ from moviekit.database_repository import (
     MovieDetails,
     MovieSummary,
 )
+from moviekit.metadata_service import MetadataSyncResult
 from moviekit.models import MovieRecord, WatchedRecord
 from moviekit.provider_backend import ProviderAvailability
 from moviekit.recommendation_engine import Recommendation
@@ -63,6 +64,14 @@ class SearchCommandTests(unittest.TestCase):
 
         self.assertEqual(args.title, "Alien")
         self.assertIs(args.func, cli.availability_sync)
+
+    def test_parser_registers_metadata_sync_command(self) -> None:
+        parser = cli.build_parser()
+
+        args = parser.parse_args(["metadata", "sync", "Alien"])
+
+        self.assertEqual(args.title, "Alien")
+        self.assertIs(args.func, cli.metadata_sync)
 
     def test_search_command_prints_friendly_message_for_no_results(self) -> None:
         with patch("moviekit.search_service.SearchService") as search_service:
@@ -343,6 +352,168 @@ class SearchCommandTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         search_service.return_value.search.assert_called_once_with(movie.title, limit=1)
         return output, sync_service, provider_service
+
+    def test_metadata_sync_command_prints_successful_summary(self) -> None:
+        movie = self._movie_summary()
+
+        output, metadata_service = self._run_metadata_sync(
+            movie=movie,
+            sync_result=MetadataSyncResult(
+                movie_title="Alien",
+                movie_id=1,
+                success=True,
+                updated=True,
+                tmdb_id=348,
+                tmdb_title="Alien",
+                runtime=117,
+                director="Ridley Scott",
+                genres=["Horror", "Science Fiction"],
+            ),
+        )
+
+        metadata_service.return_value.sync_movie.assert_called_once_with(movie)
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "Metadata synced:",
+                    "Alien (1979)",
+                    "TMDB ID: 348",
+                    "TMDb Title: Alien",
+                    "Runtime: 117 min",
+                    "Director: Ridley Scott",
+                    "Genres: Horror, Science Fiction",
+                    "",
+                ]
+            ),
+        )
+
+    def test_metadata_sync_command_prints_movie_not_found(self) -> None:
+        with patch("moviekit.database_repository.DatabaseRepository"), patch(
+            "moviekit.search_service.SearchService"
+        ) as search_service, patch(
+            "moviekit.metadata_service.MetadataSyncService"
+        ) as metadata_service:
+            search_service.return_value.search.return_value = []
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.metadata_sync(cli.argparse.Namespace(title="Missing"))
+
+        self.assertEqual(exit_code, 0)
+        metadata_service.assert_not_called()
+        self.assertEqual(output.getvalue(), 'No local movie found for "Missing".\n')
+
+    def test_metadata_sync_command_prints_no_match(self) -> None:
+        movie = self._movie_summary()
+
+        output, _metadata_service = self._run_metadata_sync(
+            movie=movie,
+            sync_result=MetadataSyncResult(
+                movie_title="Alien",
+                movie_id=1,
+                success=False,
+                updated=False,
+                error_message="No TMDb match found",
+            ),
+        )
+
+        self.assertEqual(
+            output.getvalue(),
+            "Could not sync metadata for Alien (1979).\n"
+            "No TMDb match found\n",
+        )
+
+    def test_metadata_sync_command_prints_authentication_failure(self) -> None:
+        movie = self._movie_summary()
+
+        with patch("moviekit.database_repository.DatabaseRepository"), patch(
+            "moviekit.search_service.SearchService"
+        ) as search_service, patch(
+            "moviekit.metadata_service.MetadataSyncService"
+        ) as metadata_service:
+            search_service.return_value.search.return_value = [
+                MovieSearchResult(movie=movie, watched=False)
+            ]
+            from moviekit.tmdb_client import TMDbAuthenticationError
+
+            metadata_service.return_value.sync_movie.side_effect = (
+                TMDbAuthenticationError("TMDb authentication failed")
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.metadata_sync(cli.argparse.Namespace(title="Alien"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            output.getvalue(),
+            "Could not sync metadata for Alien (1979).\n"
+            "TMDb authentication failed\n",
+        )
+
+    def test_metadata_sync_command_prints_api_failure(self) -> None:
+        movie = self._movie_summary()
+
+        with patch("moviekit.database_repository.DatabaseRepository"), patch(
+            "moviekit.search_service.SearchService"
+        ) as search_service, patch(
+            "moviekit.metadata_service.MetadataSyncService"
+        ) as metadata_service:
+            search_service.return_value.search.return_value = [
+                MovieSearchResult(movie=movie, watched=False)
+            ]
+            from moviekit.tmdb_client import TMDbAPIError
+
+            metadata_service.return_value.sync_movie.side_effect = TMDbAPIError(
+                "TMDb request failed"
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.metadata_sync(cli.argparse.Namespace(title="Alien"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            output.getvalue(),
+            "Could not sync metadata for Alien (1979).\n"
+            "TMDb request failed\n",
+        )
+
+    def _run_metadata_sync(
+        self,
+        movie: MovieSummary,
+        sync_result: MetadataSyncResult,
+    ):
+        with patch("moviekit.database_repository.DatabaseRepository"), patch(
+            "moviekit.search_service.SearchService"
+        ) as search_service, patch(
+            "moviekit.metadata_service.MetadataSyncService"
+        ) as metadata_service:
+            search_service.return_value.search.return_value = [
+                MovieSearchResult(movie=movie, watched=False)
+            ]
+            metadata_service.return_value.sync_movie.return_value = sync_result
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.metadata_sync(cli.argparse.Namespace(title=movie.title))
+
+        self.assertEqual(exit_code, 0)
+        search_service.return_value.search.assert_called_once_with(movie.title, limit=1)
+        return output, metadata_service
+
+    def _movie_summary(self) -> MovieSummary:
+        return MovieSummary(
+            id=1,
+            title="Alien",
+            year=1979,
+            letterboxd_url="https://letterboxd.com/film/alien/",
+            tmdb_id=None,
+            tmdb_title=None,
+            rating=None,
+            runtime=None,
+        )
 
     def test_tonight_command_prints_random_unwatched_movie_details(self) -> None:
         details = MovieDetails(

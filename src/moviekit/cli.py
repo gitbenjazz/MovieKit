@@ -134,6 +134,53 @@ def availability_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def metadata_sync(args: argparse.Namespace) -> int:
+    """Synchronize TMDb metadata for one local movie."""
+    from .database_repository import DatabaseRepository
+    from .metadata_service import MetadataSyncService
+    from .search_service import SearchService
+    from .tmdb_client import TMDbAPIError, TMDbAuthenticationError
+
+    repository = DatabaseRepository()
+    results = SearchService(repository).search(args.title, limit=1)
+    if not results:
+        print(f'No local movie found for "{args.title}".')
+        return 0
+
+    movie = results[0].movie
+    try:
+        result = MetadataSyncService(repository).sync_movie(movie)
+    except TMDbAuthenticationError as exc:
+        print(f"Could not sync metadata for {_format_movie_title(movie)}.")
+        print(str(exc))
+        return 0
+    except TMDbAPIError as exc:
+        print(f"Could not sync metadata for {_format_movie_title(movie)}.")
+        print(str(exc))
+        return 0
+
+    if not result.success:
+        print(f"Could not sync metadata for {_format_movie_title(movie)}.")
+        if result.error_message:
+            print(result.error_message)
+        return 0
+
+    print("Metadata synced:")
+    print(_format_movie_title(movie))
+    if result.tmdb_id is not None:
+        print(f"TMDB ID: {result.tmdb_id}")
+    if _has_value(result.tmdb_title):
+        print(f"TMDb Title: {result.tmdb_title}")
+    if result.runtime is not None:
+        print(f"Runtime: {result.runtime} min")
+    if _has_value(result.director):
+        print(f"Director: {result.director}")
+    if result.genres:
+        print(f"Genres: {', '.join(result.genres)}")
+
+    return 0
+
+
 def tonight(_args: Optional[argparse.Namespace] = None) -> int:
     """Print one random unwatched movie recommendation."""
     from .database_repository import DatabaseRepository
@@ -328,6 +375,13 @@ def build_parser() -> argparse.ArgumentParser:
     availability_sync_parser = availability_subparsers.add_parser("sync")
     availability_sync_parser.add_argument("title")
     availability_sync_parser.set_defaults(func=availability_sync)
+
+    metadata_parser = subparsers.add_parser("metadata")
+    metadata_subparsers = metadata_parser.add_subparsers(dest="metadata_command")
+
+    metadata_sync_parser = metadata_subparsers.add_parser("sync")
+    metadata_sync_parser.add_argument("title")
+    metadata_sync_parser.set_defaults(func=metadata_sync)
 
     for command in ("providers", "chat"):
         subparser = subparsers.add_parser(command)
