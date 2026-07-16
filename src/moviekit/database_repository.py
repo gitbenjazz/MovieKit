@@ -184,20 +184,9 @@ class DatabaseRepository:
         return {row["movie_id"] for row in rows}
 
     def get_movie_providers(self, movie_id: int) -> list[str]:
-        with closing(self._read_connection()) as connection:
-            rows = connection.execute(
-                """
-                SELECT providers.name
-                FROM availability
-                JOIN providers
-                    ON providers.id = availability.provider_id
-                WHERE availability.movie_id = ?
-                ORDER BY providers.name
-                """,
-                (movie_id,),
-            ).fetchall()
+        from .provider_service import ProviderService
 
-        return [row["name"] for row in rows]
+        return ProviderService(self).get_movie_provider_names(movie_id)
 
     def get_movie_details(self, movie_id: int) -> MovieDetails | None:
         with closing(self._read_connection()) as connection:
