@@ -35,6 +35,22 @@ def sync(_args: Optional[argparse.Namespace] = None) -> int:
     return 0
 
 
+def sync_metadata(_args: Optional[argparse.Namespace] = None) -> int:
+    """Synchronize TMDb metadata for all local movies."""
+    from .bulk_sync_service import BulkSyncService
+
+    result = BulkSyncService().sync_metadata()
+
+    print("Metadata synchronization completed")
+    print()
+    print(f"Processed: {result.processed}")
+    print(f"Updated: {result.updated}")
+    print(f"Skipped: {result.skipped}")
+    print(f"Failed: {result.failed}")
+
+    return 0
+
+
 def recommend(_args: Optional[argparse.Namespace] = None) -> int:
     """Print the top 10 recommended unwatched movies."""
     from .recommendation_service import top_recommended_unwatched_movies
@@ -342,6 +358,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_parser = subparsers.add_parser("sync")
     sync_parser.set_defaults(func=sync)
+    sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
+
+    sync_metadata_parser = sync_subparsers.add_parser("metadata")
+    sync_metadata_parser.set_defaults(func=sync_metadata)
 
     recommend_parser = subparsers.add_parser("recommend")
     recommend_parser.set_defaults(func=recommend)
