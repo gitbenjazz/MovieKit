@@ -46,6 +46,15 @@ class MovieDetails:
     credits: list[MovieCredit]
 
 
+@dataclass(frozen=True)
+class MovieSyncTarget:
+    id: int
+    title: str
+    year: int | None
+    letterboxd_url: str
+    tmdb_id: int | None
+
+
 class DatabaseRepository:
     def __init__(self, database_path: DatabasePath = DEFAULT_DATABASE_PATH):
         self.database_path = Path(database_path)
@@ -134,6 +143,32 @@ class DatabaseRepository:
             ).fetchall()
 
         return [self._movie_summary_from_row(row) for row in rows]
+
+    def get_all_movies(self) -> list[MovieSyncTarget]:
+        with closing(self._read_connection()) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    title,
+                    year,
+                    letterboxd_url,
+                    tmdb_id
+                FROM movies
+                ORDER BY title, year
+                """
+            ).fetchall()
+
+        return [
+            MovieSyncTarget(
+                id=row["id"],
+                title=row["title"],
+                year=row["year"],
+                letterboxd_url=row["letterboxd_url"],
+                tmdb_id=row["tmdb_id"],
+            )
+            for row in rows
+        ]
 
     def get_unwatched_movies(self) -> list[MovieSummary]:
         with closing(self._read_connection()) as connection:
