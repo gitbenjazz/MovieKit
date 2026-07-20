@@ -2,6 +2,22 @@
 
 All notable changes to MovieKit are documented here.
 
+## v0.3.9
+
+Prepared as the bulk synchronization release.
+
+### Added
+
+- `BulkSyncService` for coordinating library-wide synchronization through existing services.
+- Bulk metadata synchronization through `moviekit sync metadata`.
+- Bulk availability synchronization through `moviekit sync availability`.
+- Full bulk synchronization through `moviekit sync all`, running metadata first and availability second.
+
+### Changed
+
+- Bulk sync CLI commands now share summary formatting for processed, updated, skipped, and failed counts.
+- Bulk orchestration stays service-driven so the CLI does not duplicate metadata or provider synchronization logic.
+
 ## v0.2.0
 
 Released as Milestone 1.5.
@@ -27,4 +43,3 @@ Released as Milestone 1.5.
 
 - Fixed `moviekit sync` failures caused by legacy v1 tables missing v2 columns.
 - Fixed The Godfather Part II being reported as unwatched when watched history used a short `boxd.it` URL.
-

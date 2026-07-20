@@ -1,15 +1,23 @@
 # Developer Guide
 
-This guide captures the conventions used by the v0.2 MovieKit codebase.
+This guide captures the conventions used by the MovieKit codebase.
 
 ## Project Layout
 
 - `src/moviekit/cli.py`: command-line entry point.
+- `src/moviekit/bulk_sync_service.py`: library-wide synchronization orchestration.
+- `src/moviekit/config.py`: user configuration loading and persistence.
 - `src/moviekit/database.py`: SQLite schema and database initialization.
 - `src/moviekit/database_repository.py`: all SQLite reads and writes.
+- `src/moviekit/metadata_service.py`: single-movie TMDb metadata synchronization.
 - `src/moviekit/movie_repository.py`: CSV loading and CSV-derived record creation.
+- `src/moviekit/provider_backend.py`: provider availability backend interface.
+- `src/moviekit/provider_service.py`: provider normalization and availability persistence.
+- `src/moviekit/recommendation_engine.py`: recommendation selection and scoring.
 - `src/moviekit/search_service.py`: search orchestration and result ranking.
 - `src/moviekit/sync_service.py`: sync workflow coordinating CSV and database repositories.
+- `src/moviekit/tmdb_client.py`: reusable TMDb HTTP client helpers.
+- `src/moviekit/tmdb_provider_backend.py`: TMDb watch-provider backend.
 - `tests/`: unittest-based regression coverage.
 
 ## Layering Rules
@@ -51,6 +59,19 @@ Compatibility guards currently drop incompatible legacy v1 tables before applyin
 5. `SearchService` ranks, filters, and limits results.
 6. CLI prints title, year, watched state, optional TMDB ID, and Letterboxd URL.
 
+## Bulk Sync Flow
+
+`moviekit sync metadata`, `moviekit sync availability`, and `moviekit sync all` keep orchestration in `BulkSyncService`.
+
+1. CLI commands construct `BulkSyncService`.
+2. `BulkSyncService` iterates over `DatabaseRepository.get_all_movies()`.
+3. Metadata sync delegates each movie to `MetadataSyncService.sync_movie()`.
+4. Availability sync delegates each movie to `SyncService.sync_movie()`.
+5. `moviekit sync all` runs metadata synchronization first, then availability synchronization.
+6. CLI commands print only the returned processed, updated, skipped, and failed counts.
+
+The bulk layer must not know about Typer/argparse, print output, instantiate provider backends, or perform raw SQLite operations.
+
 ## Testing
 
 Use:
@@ -62,4 +83,3 @@ python3 -m unittest discover
 The tests use temporary SQLite databases and should not depend on the workspace `movies.db`.
 
 Add regression tests for bugs that involve CSV-to-database relationships, especially when short `boxd.it` watched URLs need to resolve to canonical `letterboxd.com/film/...` movie rows.
-
