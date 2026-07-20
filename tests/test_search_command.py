@@ -65,6 +65,13 @@ class SearchCommandTests(unittest.TestCase):
 
         self.assertIs(args.func, cli.sync_metadata)
 
+    def test_parser_registers_sync_availability_command(self) -> None:
+        parser = cli.build_parser()
+
+        args = parser.parse_args(["sync", "availability"])
+
+        self.assertIs(args.func, cli.sync_availability)
+
     def test_parser_registers_availability_sync_command(self) -> None:
         parser = cli.build_parser()
 
@@ -185,6 +192,56 @@ class SearchCommandTests(unittest.TestCase):
 
             with redirect_stdout(output):
                 exit_code = cli.sync_metadata(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Failed: 0\n", output.getvalue())
+
+    def test_sync_availability_command_prints_summary(self) -> None:
+        with patch("moviekit.bulk_sync_service.BulkSyncService") as bulk_sync_service:
+            bulk_sync_service.return_value.sync_availability.return_value = (
+                BulkSyncResult(
+                    processed=1524,
+                    updated=287,
+                    skipped=1228,
+                    failed=9,
+                )
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.sync_availability(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        bulk_sync_service.return_value.sync_availability.assert_called_once_with()
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "Availability synchronization completed",
+                    "",
+                    "Processed: 1524",
+                    "Updated: 287",
+                    "Skipped: 1228",
+                    "Failed: 9",
+                    "",
+                ]
+            ),
+        )
+
+    def test_sync_availability_command_displays_zero_failures(self) -> None:
+        with patch("moviekit.bulk_sync_service.BulkSyncService") as bulk_sync_service:
+            bulk_sync_service.return_value.sync_availability.return_value = (
+                BulkSyncResult(
+                    processed=3,
+                    updated=1,
+                    skipped=2,
+                    failed=0,
+                )
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.sync_availability(cli.argparse.Namespace())
 
         self.assertEqual(exit_code, 0)
         self.assertIn("Failed: 0\n", output.getvalue())

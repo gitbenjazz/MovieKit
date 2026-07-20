@@ -41,14 +41,29 @@ def sync_metadata(_args: Optional[argparse.Namespace] = None) -> int:
 
     result = BulkSyncService().sync_metadata()
 
-    print("Metadata synchronization completed")
+    _print_bulk_sync_summary("Metadata synchronization completed", result)
+
+    return 0
+
+
+def sync_availability(_args: Optional[argparse.Namespace] = None) -> int:
+    """Synchronize streaming availability for all local movies."""
+    from .bulk_sync_service import BulkSyncService
+
+    result = BulkSyncService().sync_availability()
+
+    _print_bulk_sync_summary("Availability synchronization completed", result)
+
+    return 0
+
+
+def _print_bulk_sync_summary(title: str, result) -> None:
+    print(title)
     print()
     print(f"Processed: {result.processed}")
     print(f"Updated: {result.updated}")
     print(f"Skipped: {result.skipped}")
     print(f"Failed: {result.failed}")
-
-    return 0
 
 
 def recommend(_args: Optional[argparse.Namespace] = None) -> int:
@@ -362,6 +377,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_metadata_parser = sync_subparsers.add_parser("metadata")
     sync_metadata_parser.set_defaults(func=sync_metadata)
+
+    sync_availability_parser = sync_subparsers.add_parser("availability")
+    sync_availability_parser.set_defaults(func=sync_availability)
 
     recommend_parser = subparsers.add_parser("recommend")
     recommend_parser.set_defaults(func=recommend)
