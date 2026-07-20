@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from moviekit import cli
-from moviekit.bulk_sync_service import BulkSyncResult
+from moviekit.bulk_sync_service import BulkSyncResult, BulkSyncRunResult
 from moviekit.database_repository import (
     DatabaseRepository,
     MovieCredit,
@@ -71,6 +71,13 @@ class SearchCommandTests(unittest.TestCase):
         args = parser.parse_args(["sync", "availability"])
 
         self.assertIs(args.func, cli.sync_availability)
+
+    def test_parser_registers_sync_all_command(self) -> None:
+        parser = cli.build_parser()
+
+        args = parser.parse_args(["sync", "all"])
+
+        self.assertIs(args.func, cli.sync_all)
 
     def test_parser_registers_availability_sync_command(self) -> None:
         parser = cli.build_parser()
@@ -245,6 +252,82 @@ class SearchCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("Failed: 0\n", output.getvalue())
+
+    def test_sync_all_command_prints_metadata_and_availability_summaries(
+        self,
+    ) -> None:
+        with patch("moviekit.bulk_sync_service.BulkSyncService") as bulk_sync_service:
+            bulk_sync_service.return_value.sync_all.return_value = BulkSyncRunResult(
+                metadata=BulkSyncResult(
+                    processed=1524,
+                    updated=341,
+                    skipped=1178,
+                    failed=5,
+                ),
+                availability=BulkSyncResult(
+                    processed=1524,
+                    updated=287,
+                    skipped=1228,
+                    failed=9,
+                ),
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.sync_all(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        bulk_sync_service.return_value.sync_all.assert_called_once_with()
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "Bulk synchronization completed",
+                    "",
+                    "Metadata",
+                    "--------",
+                    "Processed: 1524",
+                    "Updated: 341",
+                    "Skipped: 1178",
+                    "Failed: 5",
+                    "",
+                    "Availability",
+                    "------------",
+                    "Processed: 1524",
+                    "Updated: 287",
+                    "Skipped: 1228",
+                    "Failed: 9",
+                    "",
+                ]
+            ),
+        )
+
+    def test_sync_all_command_displays_success_and_failure_counts(self) -> None:
+        with patch("moviekit.bulk_sync_service.BulkSyncService") as bulk_sync_service:
+            bulk_sync_service.return_value.sync_all.return_value = BulkSyncRunResult(
+                metadata=BulkSyncResult(
+                    processed=4,
+                    updated=4,
+                    skipped=0,
+                    failed=0,
+                ),
+                availability=BulkSyncResult(
+                    processed=4,
+                    updated=1,
+                    skipped=1,
+                    failed=2,
+                ),
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.sync_all(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Updated: 4\n", output.getvalue())
+        self.assertIn("Failed: 0\n", output.getvalue())
+        self.assertIn("Updated: 1\n", output.getvalue())
+        self.assertIn("Failed: 2\n", output.getvalue())
 
     def test_availability_sync_command_prints_successful_summary(self) -> None:
         movie = MovieSummary(

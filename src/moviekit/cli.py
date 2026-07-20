@@ -57,9 +57,34 @@ def sync_availability(_args: Optional[argparse.Namespace] = None) -> int:
     return 0
 
 
+def sync_all(_args: Optional[argparse.Namespace] = None) -> int:
+    """Synchronize all supported bulk data for local movies."""
+    from .bulk_sync_service import BulkSyncService
+
+    result = BulkSyncService().sync_all()
+
+    print("Bulk synchronization completed")
+    print()
+    _print_bulk_sync_section("Metadata", result.metadata)
+    print()
+    _print_bulk_sync_section("Availability", result.availability)
+
+    return 0
+
+
 def _print_bulk_sync_summary(title: str, result) -> None:
     print(title)
     print()
+    _print_bulk_sync_counts(result)
+
+
+def _print_bulk_sync_section(title: str, result) -> None:
+    print(title)
+    print("-" * len(title))
+    _print_bulk_sync_counts(result)
+
+
+def _print_bulk_sync_counts(result) -> None:
     print(f"Processed: {result.processed}")
     print(f"Updated: {result.updated}")
     print(f"Skipped: {result.skipped}")
@@ -380,6 +405,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_availability_parser = sync_subparsers.add_parser("availability")
     sync_availability_parser.set_defaults(func=sync_availability)
+
+    sync_all_parser = sync_subparsers.add_parser("all")
+    sync_all_parser.set_defaults(func=sync_all)
 
     recommend_parser = subparsers.add_parser("recommend")
     recommend_parser.set_defaults(func=recommend)
