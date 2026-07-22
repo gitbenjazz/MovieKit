@@ -32,9 +32,12 @@ This guide captures the conventions used by the MovieKit codebase.
 Schema v2 keeps `movies` as the central table.
 
 - `movies.letterboxd_url` is the movie business key.
+- In Phase 1, `movies` contains only the canonical library imported from `movies.csv`; a clean rebuild should contain exactly 1524 movies.
 - `watched.movie_id` points to `movies.id`.
 - Genres, credits, source lists, providers, countries, and availability are normalized into their own tables.
 - `initialize_database()` enables `PRAGMA foreign_keys = ON`.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the Phase 1 database scope and the future personal-library boundary.
 
 Compatibility guards currently drop incompatible legacy v1 tables before applying Schema v2. A future migration system should replace those guards.
 
@@ -45,8 +48,10 @@ Compatibility guards currently drop incompatible legacy v1 tables before applyin
 1. `MovieRepository` reads `movies.csv` and `watched.csv`.
 2. `SyncService` asks the CSV repository for movie and watched records.
 3. `DatabaseRepository.save_movies()` upserts canonical movie records.
-4. `DatabaseRepository.save_watched()` rebuilds watched history and resolves rows to canonical movies by title/year where possible.
+4. `DatabaseRepository.save_watched()` rebuilds watched history and links rows to existing canonical movies where possible.
 5. The CLI prints the sync summary.
+
+Watched import must not create rows in `movies`. Unmatched watched entries are skipped and reported.
 
 ## Search Flow
 

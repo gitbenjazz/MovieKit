@@ -2,6 +2,18 @@
 
 MovieKit is a local-first toolkit for tracking and exploring the 1001 movies list with CSV inputs, SQLite storage, and a small command-line interface.
 
+## Current Scope
+
+MovieKit Phase 1 manages the canonical Letterboxd 1001 movie library imported from `movies.csv`.
+
+- The `movies` table contains only canonical movies from `movies.csv`.
+- A clean rebuild is expected to contain exactly **1524 movies**.
+- `moviekit sync` imports the canonical library and links watched history to those existing movies.
+- Watched imports must never create additional movies.
+- Metadata and availability synchronization enrich existing movies only.
+
+Personal Letterboxd library synchronization is a future milestone. That future phase may intentionally import watched movies outside the 1001 list, ratings, reviews, diary entries, favorites/likes, and additional metadata. It is not part of Phase 1.
+
 ## What's New in v0.2
 
 - Normalized SQLite Schema v2 with movies as the central table.
