@@ -16,7 +16,13 @@ class SyncSummary:
     watched_movies: int
     remaining_movies: int
     movies_synced: int
-    watched_history_synced: int
+    watched_history_imported: int
+    watched_history_skipped: int
+    watched_history_skipped_reasons: dict[str, int]
+
+    @property
+    def watched_history_synced(self) -> int:
+        return self.watched_history_imported
 
     @property
     def progress(self) -> float:
@@ -68,14 +74,20 @@ class SyncService:
         watched_records = movie_repository.watched_records()
 
         self.database_repository.save_movies(movie_records)
-        self.database_repository.save_watched(watched_records)
+        watched_import_summary = self.database_repository.save_watched(
+            watched_records
+        )
 
         return SyncSummary(
             total_movies=len(movies),
             watched_movies=len(seen),
             remaining_movies=len(unseen),
             movies_synced=len(movie_records),
-            watched_history_synced=len(watched_records),
+            watched_history_imported=watched_import_summary.imported,
+            watched_history_skipped=watched_import_summary.skipped,
+            watched_history_skipped_reasons=(
+                watched_import_summary.skipped_reasons
+            ),
         )
 
     def sync_movie(self, movie) -> SyncResult:

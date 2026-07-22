@@ -55,6 +55,13 @@ class MovieSyncTarget:
     tmdb_id: int | None
 
 
+@dataclass(frozen=True)
+class WatchedImportSummary:
+    imported: int
+    skipped: int
+    skipped_reasons: dict[str, int]
+
+
 class DatabaseRepository:
     def __init__(self, database_path: DatabasePath = DEFAULT_DATABASE_PATH):
         self.database_path = Path(database_path)
@@ -73,7 +80,10 @@ class DatabaseRepository:
                     self._replace_movie_genres(connection, movie_id, movie.genres)
                     self._replace_movie_directors(connection, movie_id, movie.director)
 
-    def save_watched(self, watched: Iterable[WatchedRecord]) -> None:
+    def save_watched(self, watched: Iterable[WatchedRecord]) -> WatchedImportSummary:
+        imported = 0
+        skipped_reasons: dict[str, int] = {}
+
         with closing(sqlite3.connect(self.database_path)) as connection:
             connection.execute("PRAGMA foreign_keys = ON")
 
@@ -82,9 +92,14 @@ class DatabaseRepository:
 
                 for item in watched:
                     if item.letterboxd_uri is None:
+                        self._count_skip(skipped_reasons, "missing Letterboxd URI")
                         continue
 
                     movie_id = self._watched_movie_id(connection, item)
+                    if movie_id is None:
+                        self._count_skip(skipped_reasons, "no matching movie")
+                        continue
+
                     connection.execute(
                         """
                         INSERT INTO watched (
@@ -96,8 +111,15 @@ class DatabaseRepository:
                         """,
                         (movie_id, item.watched_date, item.letterboxd_uri),
                     )
+                    imported += 1
 
                 self._delete_duplicate_noncanonical_movies(connection)
+
+        return WatchedImportSummary(
+            imported=imported,
+            skipped=sum(skipped_reasons.values()),
+            skipped_reasons=skipped_reasons,
+        )
 
     def get_movie_by_letterboxd_url(
         self,
@@ -294,7 +316,7 @@ class DatabaseRepository:
     def _watched_movie_id(
         connection: sqlite3.Connection,
         watched: WatchedRecord,
-    ) -> int:
+    ) -> int | None:
         row = connection.execute(
             """
             SELECT id
@@ -318,14 +340,11 @@ class DatabaseRepository:
         if row is not None:
             return int(row[0])
 
-        return DatabaseRepository._upsert_movie(
-            connection,
-            MovieRecord(
-                title=watched.title,
-                year=watched.year,
-                letterboxd_url=watched.letterboxd_uri,
-            ),
-        )
+        return None
+
+    @staticmethod
+    def _count_skip(skipped_reasons: dict[str, int], reason: str) -> None:
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
 
     @staticmethod
     def _delete_duplicate_noncanonical_movies(connection: sqlite3.Connection) -> None:

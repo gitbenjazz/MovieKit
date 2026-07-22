@@ -27,7 +27,7 @@ from moviekit.models import MovieRecord, WatchedRecord
 from moviekit.provider_backend import ProviderAvailability
 from moviekit.recommendation_engine import Recommendation
 from moviekit.search_service import MovieSearchResult, SearchService
-from moviekit.sync_service import SyncResult
+from moviekit.sync_service import SyncResult, SyncSummary
 
 
 class SearchCommandTests(unittest.TestCase):
@@ -152,6 +152,42 @@ class SearchCommandTests(unittest.TestCase):
                     "Status: Watched",
                     "TMDB ID: 949",
                     "Letterboxd URL: https://letterboxd.com/film/heat-1995/",
+                    "",
+                ]
+            ),
+        )
+
+    def test_sync_command_prints_watched_import_summary(self) -> None:
+        with patch("moviekit.sync_service.SyncService") as sync_service:
+            sync_service.return_value.sync.return_value = SyncSummary(
+                total_movies=10,
+                watched_movies=4,
+                remaining_movies=6,
+                movies_synced=10,
+                watched_history_imported=3,
+                watched_history_skipped=1,
+                watched_history_skipped_reasons={"no matching movie": 1},
+            )
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = cli.sync(cli.argparse.Namespace())
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            output.getvalue(),
+            "\n".join(
+                [
+                    "MovieKit Sync",
+                    "-------------------",
+                    "Watched 1001: 4",
+                    "Remaining 1001: 6",
+                    "Progress: 40.0%",
+                    "SQLite movies synced: 10",
+                    "SQLite watched history imported: 3",
+                    "SQLite watched history skipped: 1",
+                    "SQLite watched skipped reasons:",
+                    "  - no matching movie: 1",
                     "",
                 ]
             ),

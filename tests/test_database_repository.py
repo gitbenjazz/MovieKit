@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import closing
 from pathlib import Path
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -105,6 +107,108 @@ class DatabaseRepositoryTests(unittest.TestCase):
 
             self.assertEqual(repository.get_random_unwatched(limit=0), [])
             self.assertEqual(repository.get_random_unwatched(limit=-1), [])
+
+    def test_save_watched_does_not_create_movie_for_unmatched_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "movies.db"
+            repository = DatabaseRepository(database_path)
+            repository.save_movies(
+                [
+                    MovieRecord(
+                        title="Existing Movie",
+                        year=2001,
+                        letterboxd_url="https://letterboxd.com/film/existing-movie/",
+                    )
+                ]
+            )
+            before_count = self._movie_count(database_path)
+
+            summary = repository.save_watched(
+                [
+                    WatchedRecord(
+                        title="Missing Movie",
+                        year=2002,
+                        watched_date="2026-07-21",
+                        letterboxd_uri="https://boxd.it/missing",
+                    )
+                ]
+            )
+            after_count = self._movie_count(database_path)
+
+        self.assertEqual(before_count, 1)
+        self.assertEqual(after_count, before_count)
+        self.assertEqual(summary.imported, 0)
+        self.assertEqual(summary.skipped, 1)
+        self.assertEqual(summary.skipped_reasons, {"no matching movie": 1})
+
+    def test_save_watched_skips_unmatched_watched_movies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "movies.db"
+            repository = DatabaseRepository(database_path)
+            repository.save_movies(
+                [
+                    MovieRecord(
+                        title="Existing Movie",
+                        year=2001,
+                        letterboxd_url="https://letterboxd.com/film/existing-movie/",
+                    )
+                ]
+            )
+
+            summary = repository.save_watched(
+                [
+                    WatchedRecord(
+                        title="Missing Movie",
+                        year=2002,
+                        watched_date="2026-07-21",
+                        letterboxd_uri="https://boxd.it/missing",
+                    )
+                ]
+            )
+            watched_count = self._watched_count(database_path)
+
+        self.assertEqual(watched_count, 0)
+        self.assertEqual(summary.imported, 0)
+        self.assertEqual(summary.skipped, 1)
+
+    def test_save_watched_imports_matched_watched_movies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "movies.db"
+            repository = DatabaseRepository(database_path)
+            repository.save_movies(
+                [
+                    MovieRecord(
+                        title="Existing Movie",
+                        year=2001,
+                        letterboxd_url="https://letterboxd.com/film/existing-movie/",
+                    )
+                ]
+            )
+
+            summary = repository.save_watched(
+                [
+                    WatchedRecord(
+                        title="Existing Movie",
+                        year=2001,
+                        watched_date="2026-07-21",
+                        letterboxd_uri="https://boxd.it/existing",
+                    )
+                ]
+            )
+            watched_count = self._watched_count(database_path)
+
+        self.assertEqual(watched_count, 1)
+        self.assertEqual(summary.imported, 1)
+        self.assertEqual(summary.skipped, 0)
+        self.assertEqual(summary.skipped_reasons, {})
+
+    def _movie_count(self, database_path: Path) -> int:
+        with closing(sqlite3.connect(database_path)) as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM movies").fetchone()[0])
+
+    def _watched_count(self, database_path: Path) -> int:
+        with closing(sqlite3.connect(database_path)) as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM watched").fetchone()[0])
 
 
 if __name__ == "__main__":

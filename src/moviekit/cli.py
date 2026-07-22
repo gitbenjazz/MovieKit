@@ -30,7 +30,12 @@ def sync(_args: Optional[argparse.Namespace] = None) -> int:
     print(f"Remaining 1001: {summary.remaining_movies}")
     print(f"Progress: {summary.progress:.1%}")
     print(f"SQLite movies synced: {summary.movies_synced}")
-    print(f"SQLite watched history synced: {summary.watched_history_synced}")
+    print(f"SQLite watched history imported: {summary.watched_history_imported}")
+    print(f"SQLite watched history skipped: {summary.watched_history_skipped}")
+    if summary.watched_history_skipped_reasons:
+        print("SQLite watched skipped reasons:")
+        for reason, count in summary.watched_history_skipped_reasons.items():
+            print(f"  - {reason}: {count}")
 
     return 0
 
