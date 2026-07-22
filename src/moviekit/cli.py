@@ -20,9 +20,9 @@ def _not_implemented(_args: argparse.Namespace) -> int:
 
 def sync(_args: Optional[argparse.Namespace] = None) -> int:
     """Refresh CSV outputs, populate SQLite, and print a summary."""
-    from .sync_service import SyncService
+    from .application import SyncLibrary
 
-    summary = SyncService().sync()
+    summary = SyncLibrary().execute()
 
     print("MovieKit Sync")
     print("-------------------")
@@ -42,9 +42,9 @@ def sync(_args: Optional[argparse.Namespace] = None) -> int:
 
 def sync_metadata(_args: Optional[argparse.Namespace] = None) -> int:
     """Synchronize TMDb metadata for all local movies."""
-    from .bulk_sync_service import BulkSyncService
+    from .application import SyncMetadata
 
-    result = BulkSyncService().sync_metadata()
+    result = SyncMetadata().execute()
 
     _print_bulk_sync_summary("Metadata synchronization completed", result)
 
@@ -53,9 +53,9 @@ def sync_metadata(_args: Optional[argparse.Namespace] = None) -> int:
 
 def sync_availability(_args: Optional[argparse.Namespace] = None) -> int:
     """Synchronize streaming availability for all local movies."""
-    from .bulk_sync_service import BulkSyncService
+    from .application import SyncAvailability
 
-    result = BulkSyncService().sync_availability()
+    result = SyncAvailability().execute()
 
     _print_bulk_sync_summary("Availability synchronization completed", result)
 
@@ -64,9 +64,9 @@ def sync_availability(_args: Optional[argparse.Namespace] = None) -> int:
 
 def sync_all(_args: Optional[argparse.Namespace] = None) -> int:
     """Synchronize all supported bulk data for local movies."""
-    from .bulk_sync_service import BulkSyncService
+    from .application import SyncAll
 
-    result = BulkSyncService().sync_all()
+    result = SyncAll().execute()
 
     print("Bulk synchronization completed")
     print()
@@ -98,9 +98,9 @@ def _print_bulk_sync_counts(result) -> None:
 
 def recommend(_args: Optional[argparse.Namespace] = None) -> int:
     """Print the top 10 recommended unwatched movies."""
-    from .recommendation_service import top_recommended_unwatched_movies
+    from .application import RecommendTopMovies
 
-    prime_movies = top_recommended_unwatched_movies(
+    prime_movies = RecommendTopMovies().execute(
         limit=10,
         verbose=True,
     )
@@ -115,7 +115,7 @@ def recommend(_args: Optional[argparse.Namespace] = None) -> int:
 
 def search(args: argparse.Namespace) -> int:
     """Search movies in the local MovieKit database."""
-    from .search_service import SearchService
+    from .application import SearchMovies
 
     watched_filter = None
     if args.watched:
@@ -123,7 +123,7 @@ def search(args: argparse.Namespace) -> int:
     elif args.unwatched:
         watched_filter = False
 
-    results = SearchService().search(
+    results = SearchMovies().execute(
         args.text,
         limit=args.limit,
         watched=watched_filter,
@@ -152,31 +152,19 @@ def search(args: argparse.Namespace) -> int:
 
 def availability_sync(args: argparse.Namespace) -> int:
     """Synchronize streaming availability for one local movie."""
-    from .database_repository import DatabaseRepository
-    from .provider_service import ProviderService
-    from .search_service import SearchService
-    from .sync_service import SyncService
-    from .tmdb_provider_backend import TMDbProviderBackend
+    from .application import SyncAvailability
 
-    repository = DatabaseRepository()
-    results = SearchService(repository).search(args.title, limit=1)
-    if not results:
+    use_case_result = SyncAvailability().execute_movie(args.title)
+    if use_case_result.movie is None:
         print(f'No local movie found for "{args.title}".')
         return 0
 
-    movie = results[0].movie
-    provider_service = ProviderService(
-        repository,
-        backend=TMDbProviderBackend(),
-    )
-    result = SyncService(
-        database_repository=repository,
-        provider_service=provider_service,
-    ).sync_movie(movie)
+    movie = use_case_result.movie
+    result = use_case_result.sync_result
 
-    if not result.success:
+    if result is None or not result.success:
         print(f"Could not sync availability for {_format_movie_title(movie)}.")
-        if result.error_message:
+        if result is not None and result.error_message:
             print(result.error_message)
         return 0
 
@@ -184,12 +172,11 @@ def availability_sync(args: argparse.Namespace) -> int:
         print("No streaming availability found.")
         return 0
 
-    availability = provider_service.get_movie_availability(movie.id)
     print("Synced:")
     print(_format_movie_title(movie))
     print()
     print("Providers:")
-    for record in availability:
+    for record in use_case_result.availability:
         print(f"✓ {record.provider_name} ({record.access_type})")
 
     return 0
@@ -197,32 +184,23 @@ def availability_sync(args: argparse.Namespace) -> int:
 
 def metadata_sync(args: argparse.Namespace) -> int:
     """Synchronize TMDb metadata for one local movie."""
-    from .database_repository import DatabaseRepository
-    from .metadata_service import MetadataSyncService
-    from .search_service import SearchService
-    from .tmdb_client import TMDbAPIError, TMDbAuthenticationError
+    from .application import SyncMetadata
 
-    repository = DatabaseRepository()
-    results = SearchService(repository).search(args.title, limit=1)
-    if not results:
+    use_case_result = SyncMetadata().execute_movie(args.title)
+    if use_case_result.movie is None:
         print(f'No local movie found for "{args.title}".')
         return 0
 
-    movie = results[0].movie
-    try:
-        result = MetadataSyncService(repository).sync_movie(movie)
-    except TMDbAuthenticationError as exc:
+    movie = use_case_result.movie
+    if use_case_result.error_message:
         print(f"Could not sync metadata for {_format_movie_title(movie)}.")
-        print(str(exc))
-        return 0
-    except TMDbAPIError as exc:
-        print(f"Could not sync metadata for {_format_movie_title(movie)}.")
-        print(str(exc))
+        print(use_case_result.error_message)
         return 0
 
-    if not result.success:
+    result = use_case_result.sync_result
+    if result is None or not result.success:
         print(f"Could not sync metadata for {_format_movie_title(movie)}.")
-        if result.error_message:
+        if result is not None and result.error_message:
             print(result.error_message)
         return 0
 
@@ -244,11 +222,9 @@ def metadata_sync(args: argparse.Namespace) -> int:
 
 def tonight(_args: Optional[argparse.Namespace] = None) -> int:
     """Print one random unwatched movie recommendation."""
-    from .database_repository import DatabaseRepository
-    from .recommendation_engine import RecommendationEngine
+    from .application import RecommendTonight
 
-    repository = DatabaseRepository()
-    recommendation = RecommendationEngine(repository).recommend_tonight()
+    recommendation = RecommendTonight().execute()
 
     if recommendation is None:
         print("No unwatched movies found.")
@@ -387,9 +363,9 @@ def _highlight_match(value: str, text: str) -> str:
 
 def init_database(_args: Optional[argparse.Namespace] = None) -> int:
     """Create the MovieKit SQLite database."""
-    from .database import DEFAULT_DATABASE_PATH, initialize_database
+    from .application import InitializeDatabase
 
-    database_path = initialize_database(DEFAULT_DATABASE_PATH)
+    database_path = InitializeDatabase().execute()
     print(f"MovieKit database initialized: {database_path}")
 
     return 0
