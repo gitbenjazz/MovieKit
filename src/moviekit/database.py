@@ -17,7 +17,7 @@ REQUIRED_COLUMNS = {
 
 SCHEMA = """
 pragma foreign_keys = on;
-pragma user_version = 2;
+pragma user_version = 3;
 
 create table if not exists movies (
     id integer primary key,
@@ -110,6 +110,114 @@ create table if not exists availability (
     foreign key (country_code) references countries(code)
 );
 
+create table if not exists accounts (
+    id integer primary key,
+    source text not null,
+    username text not null,
+    display_name text,
+    profile_url text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    unique (source, username)
+);
+
+create table if not exists personal_movies (
+    id integer primary key,
+    account_id integer not null,
+    canonical_movie_id integer,
+    title text not null,
+    year integer,
+    letterboxd_url text,
+    letterboxd_uri text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    check (letterboxd_url is not null or letterboxd_uri is not null),
+    unique (id, account_id),
+    unique (account_id, letterboxd_url),
+    unique (account_id, letterboxd_uri),
+    foreign key (account_id) references accounts(id) on delete cascade,
+    foreign key (canonical_movie_id) references movies(id) on delete set null
+);
+
+create table if not exists watch_events (
+    id integer primary key,
+    account_id integer not null,
+    personal_movie_id integer not null,
+    watched_date text,
+    letterboxd_uri text,
+    source text not null default 'letterboxd',
+    is_rewatch integer not null default 0,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    unique (id, account_id, personal_movie_id),
+    unique (account_id, letterboxd_uri),
+    foreign key (account_id) references accounts(id) on delete cascade,
+    foreign key (personal_movie_id, account_id)
+        references personal_movies(id, account_id) on delete cascade
+);
+
+create table if not exists ratings (
+    account_id integer not null,
+    personal_movie_id integer not null,
+    rating real not null,
+    rated_at text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    primary key (account_id, personal_movie_id),
+    foreign key (account_id) references accounts(id) on delete cascade,
+    foreign key (personal_movie_id, account_id)
+        references personal_movies(id, account_id) on delete cascade
+);
+
+create table if not exists reviews (
+    id integer primary key,
+    account_id integer not null,
+    personal_movie_id integer not null,
+    watch_event_id integer,
+    review_uri text,
+    review_text text,
+    rating real,
+    reviewed_at text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    unique (account_id, review_uri),
+    foreign key (account_id) references accounts(id) on delete cascade,
+    foreign key (personal_movie_id, account_id)
+        references personal_movies(id, account_id) on delete cascade,
+    foreign key (watch_event_id) references watch_events(id) on delete set null
+);
+
+create table if not exists likes (
+    account_id integer not null,
+    personal_movie_id integer not null,
+    liked_at text,
+    source_uri text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    primary key (account_id, personal_movie_id),
+    foreign key (account_id) references accounts(id) on delete cascade,
+    foreign key (personal_movie_id, account_id)
+        references personal_movies(id, account_id) on delete cascade
+);
+
+create table if not exists sync_runs (
+    id integer primary key,
+    account_id integer,
+    source text not null,
+    sync_type text not null,
+    started_at text not null default (datetime('now')),
+    finished_at text,
+    status text not null,
+    records_seen integer not null default 0,
+    records_inserted integer not null default 0,
+    records_updated integer not null default 0,
+    records_skipped integer not null default 0,
+    error_message text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    foreign key (account_id) references accounts(id) on delete set null
+);
+
 create index if not exists idx_movie_credits_person_id
     on movie_credits (person_id);
 
@@ -130,6 +238,42 @@ create index if not exists idx_availability_movie_id
 
 create index if not exists idx_availability_provider_id
     on availability (provider_id);
+
+create index if not exists idx_personal_movies_account_id
+    on personal_movies (account_id);
+
+create index if not exists idx_personal_movies_canonical_movie_id
+    on personal_movies (canonical_movie_id);
+
+create index if not exists idx_personal_movies_title_year
+    on personal_movies (title, year);
+
+create index if not exists idx_watch_events_account_date
+    on watch_events (account_id, watched_date);
+
+create index if not exists idx_watch_events_personal_movie_id
+    on watch_events (personal_movie_id);
+
+create index if not exists idx_ratings_account_rating
+    on ratings (account_id, rating);
+
+create index if not exists idx_ratings_personal_movie_id
+    on ratings (personal_movie_id);
+
+create index if not exists idx_reviews_personal_movie_id
+    on reviews (personal_movie_id);
+
+create index if not exists idx_reviews_account_reviewed_at
+    on reviews (account_id, reviewed_at);
+
+create index if not exists idx_likes_personal_movie_id
+    on likes (personal_movie_id);
+
+create index if not exists idx_sync_runs_account_started
+    on sync_runs (account_id, started_at);
+
+create index if not exists idx_sync_runs_source_type
+    on sync_runs (source, sync_type);
 """
 
 
