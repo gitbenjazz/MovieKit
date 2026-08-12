@@ -171,6 +171,71 @@ class MetadataSyncServiceTests(unittest.TestCase):
         self.assertFalse(result.updated)
         self.assertEqual(result.error_message, "Multiple TMDb matches found")
 
+    def test_matching_candidates_ignores_unicode_accents(self) -> None:
+        candidate = {
+            "id": 194,
+            "title": "Amélie",
+            "release_date": "2001-04-25",
+        }
+
+        matches = MetadataSyncService._matching_candidates(
+            [candidate], "Amelie", 2001
+        )
+
+        self.assertEqual(matches, [candidate])
+
+    def test_matching_candidates_ignores_unicode_punctuation(self) -> None:
+        candidate = {
+            "id": 10681,
+            "title": "WALL·E",
+            "release_date": "2008-06-22",
+        }
+
+        matches = MetadataSyncService._matching_candidates(
+            [candidate], "WALL-E", 2008
+        )
+
+        self.assertEqual(matches, [candidate])
+
+    def test_matching_candidates_rejects_different_titles(self) -> None:
+        candidate = {
+            "id": 348,
+            "title": "Aliens",
+            "release_date": "1979-05-25",
+        }
+
+        matches = MetadataSyncService._matching_candidates(
+            [candidate], "Alien", 1979
+        )
+
+        self.assertEqual(matches, [])
+
+    def test_matching_candidates_still_requires_matching_release_year(self) -> None:
+        candidate = {
+            "id": 194,
+            "title": "Amélie",
+            "release_date": "2001-04-25",
+        }
+
+        matches = MetadataSyncService._matching_candidates(
+            [candidate], "Amelie", 2002
+        )
+
+        self.assertEqual(matches, [])
+
+    def test_matching_candidates_remains_case_and_whitespace_insensitive(self) -> None:
+        candidate = {
+            "id": 348,
+            "title": "  ALIEN   ",
+            "release_date": "1979-05-25",
+        }
+
+        matches = MetadataSyncService._matching_candidates(
+            [candidate], "alien", 1979
+        )
+
+        self.assertEqual(matches, [candidate])
+
     def test_sync_movie_propagates_api_failure(self) -> None:
         service = MetadataSyncService(
             FakeRepository(),

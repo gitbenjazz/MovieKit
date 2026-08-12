@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import unicodedata
 
 from .database_repository import DatabaseRepository
 from .models import MovieRecord
@@ -176,7 +177,13 @@ class MetadataSyncService:
 
     @staticmethod
     def _normalize_title(title: str) -> str:
-        return " ".join(title.casefold().split())
+        decomposed_title = unicodedata.normalize("NFKD", title.casefold())
+        title_without_accents_or_punctuation = "".join(
+            character
+            for character in decomposed_title
+            if not unicodedata.category(character).startswith(("M", "P"))
+        )
+        return " ".join(title_without_accents_or_punctuation.split())
 
     @staticmethod
     def _release_year(release_date) -> int | None:
