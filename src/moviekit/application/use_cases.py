@@ -254,9 +254,9 @@ class SyncAll:
 class InitializeDatabase:
     def __init__(self, database_path=None, initializer=None):
         if database_path is None:
-            from ..database import DEFAULT_DATABASE_PATH
+            from ..config import load_config
 
-            database_path = DEFAULT_DATABASE_PATH
+            database_path = load_config().database_path
         if initializer is None:
             from ..database import initialize_database
 

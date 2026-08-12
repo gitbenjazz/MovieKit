@@ -6,7 +6,7 @@ from pathlib import Path
 import sqlite3
 from typing import Iterable, Union
 
-from .database import DEFAULT_DATABASE_PATH, initialize_database
+from .database import initialize_database
 from .models import MovieRecord, WatchedRecord
 
 DatabasePath = Union[str, Path]
@@ -63,7 +63,12 @@ class WatchedImportSummary:
 
 
 class DatabaseRepository:
-    def __init__(self, database_path: DatabasePath = DEFAULT_DATABASE_PATH):
+    def __init__(self, database_path: DatabasePath | None = None):
+        if database_path is None:
+            from .config import load_config
+
+            database_path = load_config().database_path
+
         self.database_path = Path(database_path)
         initialize_database(self.database_path)
 

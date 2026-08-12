@@ -6,12 +6,15 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from moviekit.application.use_cases import InitializeDatabase
+from moviekit.config import MovieKitConfig, save_config
 from moviekit.database_repository import DatabaseRepository, MovieSummary
 from moviekit.models import MovieRecord, WatchedRecord
 
@@ -201,6 +204,66 @@ class DatabaseRepositoryTests(unittest.TestCase):
         self.assertEqual(summary.imported, 1)
         self.assertEqual(summary.skipped, 0)
         self.assertEqual(summary.skipped_reasons, {})
+
+    def test_default_repository_uses_configured_database_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "home"
+            configured_path = root / "configured-repository.db"
+
+            with patch("pathlib.Path.home", return_value=home):
+                save_config(MovieKitConfig(database_path=str(configured_path)))
+                repository = DatabaseRepository()
+
+            self.assertEqual(repository.database_path, configured_path)
+            self.assertTrue(configured_path.exists())
+
+    def test_repository_explicit_path_takes_precedence_over_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "home"
+            configured_path = root / "configured-repository.db"
+            explicit_path = root / "explicit-repository.db"
+
+            with patch("pathlib.Path.home", return_value=home):
+                save_config(MovieKitConfig(database_path=str(configured_path)))
+                repository = DatabaseRepository(explicit_path)
+
+            self.assertEqual(repository.database_path, explicit_path)
+            self.assertTrue(explicit_path.exists())
+            self.assertFalse(configured_path.exists())
+
+    def test_initialize_database_uses_configured_database_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "home"
+            configured_path = root / "configured-initialize.db"
+
+            with patch("pathlib.Path.home", return_value=home):
+                save_config(MovieKitConfig(database_path=str(configured_path)))
+                use_case = InitializeDatabase()
+                result = use_case.execute()
+
+            self.assertEqual(Path(use_case.database_path), configured_path)
+            self.assertEqual(Path(result), configured_path)
+            self.assertTrue(configured_path.exists())
+
+    def test_initialize_database_explicit_path_takes_precedence_over_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "home"
+            configured_path = root / "configured-initialize.db"
+            explicit_path = root / "explicit-initialize.db"
+
+            with patch("pathlib.Path.home", return_value=home):
+                save_config(MovieKitConfig(database_path=str(configured_path)))
+                use_case = InitializeDatabase(explicit_path)
+                result = use_case.execute()
+
+            self.assertEqual(Path(use_case.database_path), explicit_path)
+            self.assertEqual(Path(result), explicit_path)
+            self.assertTrue(explicit_path.exists())
+            self.assertFalse(configured_path.exists())
 
     def _movie_count(self, database_path: Path) -> int:
         with closing(sqlite3.connect(database_path)) as connection:
