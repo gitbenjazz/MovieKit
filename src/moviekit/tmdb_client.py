@@ -43,12 +43,9 @@ class TMDbClient:
         request_params = dict(params or {})
         request_params["api_key"] = self.api_key
 
-        requests_module = None
-        session = self.session
-        if session is None:
-            import requests as requests_module
+        import requests as requests_module
 
-            session = requests_module
+        session = self.session if self.session is not None else requests_module
 
         try:
             response = session.get(

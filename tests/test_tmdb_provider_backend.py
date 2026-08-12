@@ -4,6 +4,8 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -12,7 +14,7 @@ if str(SRC) not in sys.path:
 
 from moviekit.provider_backend import ProviderAvailability
 from moviekit.provider_service import ProviderService
-from moviekit.tmdb_client import TMDbAPIError, TMDbAuthenticationError
+from moviekit.tmdb_client import TMDbAPIError, TMDbAuthenticationError, TMDbClient
 from moviekit.tmdb_provider_backend import TMDbProviderBackend
 
 
@@ -33,6 +35,116 @@ class FakeTMDbClient:
             raise self.error
 
         return self.response
+
+
+class FakeRequestException(Exception):
+    pass
+
+
+class FakeHTTPError(FakeRequestException):
+    def __init__(self, status_code: int):
+        super().__init__(f"HTTP {status_code}")
+        self.response = SimpleNamespace(status_code=status_code)
+
+
+class FakeResponse:
+    def __init__(self, data=None, error=None):
+        self.data = data
+        self.error = error
+
+    def raise_for_status(self) -> None:
+        if self.error is not None:
+            raise self.error
+
+    def json(self):
+        if isinstance(self.data, Exception):
+            raise self.data
+        return self.data
+
+
+class FakeSession:
+    def __init__(self, response=None, error=None):
+        self.response = response
+        self.error = error
+        self.calls = []
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append((url, params, timeout))
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+class TMDbClientInjectedSessionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.requests_module = SimpleNamespace(
+            HTTPError=FakeHTTPError,
+            RequestException=FakeRequestException,
+        )
+
+    def test_http_authentication_failures_are_normalized(self) -> None:
+        for status_code in (401, 403):
+            with self.subTest(status_code=status_code):
+                session = FakeSession(
+                    response=FakeResponse(error=FakeHTTPError(status_code))
+                )
+                client = TMDbClient(api_key="test-key", session=session)
+
+                with patch.dict(sys.modules, {"requests": self.requests_module}):
+                    with self.assertRaises(TMDbAuthenticationError):
+                        client.get_json("movie/949/watch/providers")
+
+    def test_other_http_failures_are_normalized(self) -> None:
+        session = FakeSession(response=FakeResponse(error=FakeHTTPError(500)))
+        client = TMDbClient(api_key="test-key", session=session)
+
+        with patch.dict(sys.modules, {"requests": self.requests_module}):
+            with self.assertRaises(TMDbAPIError) as raised:
+                client.get_json("movie/949/watch/providers")
+
+        self.assertNotIsInstance(raised.exception, TMDbAuthenticationError)
+
+    def test_request_failures_are_normalized(self) -> None:
+        session = FakeSession(error=FakeRequestException("connection failed"))
+        client = TMDbClient(api_key="test-key", session=session)
+
+        with patch.dict(sys.modules, {"requests": self.requests_module}):
+            with self.assertRaises(TMDbAPIError):
+                client.get_json("movie/949/watch/providers")
+
+    def test_invalid_json_remains_api_error(self) -> None:
+        session = FakeSession(response=FakeResponse(data=ValueError("invalid JSON")))
+        client = TMDbClient(api_key="test-key", session=session)
+
+        with patch.dict(sys.modules, {"requests": self.requests_module}):
+            with self.assertRaisesRegex(TMDbAPIError, "not valid JSON"):
+                client.get_json("movie/949/watch/providers")
+
+    def test_successful_response_behavior_is_unchanged(self) -> None:
+        data = {"results": {"US": {}}}
+        session = FakeSession(response=FakeResponse(data=data))
+        client = TMDbClient(
+            api_key="test-key",
+            session=session,
+            base_url="https://example.test/3/",
+        )
+
+        with patch.dict(sys.modules, {"requests": self.requests_module}):
+            result = client.get_json(
+                "/movie/949/watch/providers", params={"language": "en-US"}
+            )
+
+        self.assertIs(result, data)
+        self.assertEqual(
+            session.calls,
+            [
+                (
+                    "https://example.test/3/movie/949/watch/providers",
+                    {"language": "en-US", "api_key": "test-key"},
+                    20,
+                )
+            ],
+        )
 
 
 class TMDbProviderBackendTests(unittest.TestCase):
