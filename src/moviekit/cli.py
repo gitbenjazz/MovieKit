@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sqlite3
 import sys
 from typing import Optional
 
@@ -379,6 +380,58 @@ def init_database(_args: Optional[argparse.Namespace] = None) -> int:
     return 0
 
 
+def personal_sync(args: argparse.Namespace) -> int:
+    from .application import SyncPersonalLibrary
+
+    try:
+        result = SyncPersonalLibrary().execute(args.source, args.username)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        print(f"Personal sync failed: {exc}", file=sys.stderr)
+        return 1
+    print("Personal Library sync completed")
+    print(f"Sync run: {result.sync_run_id}")
+    print(f"Movies processed: {result.movies}")
+    print(f"Canonical matches: {result.canonical_matches}")
+    print(f"Unmatched movies: {result.unmatched}")
+    print(f"Ambiguous matches: {result.ambiguous}")
+    print(f"Records inserted: {result.inserted}")
+    print(f"Records updated: {result.updated}")
+    print(f"Watch events (account total): {result.watch_events}")
+    print(f"Ratings (account total): {result.ratings}")
+    print(f"Reviews (account total): {result.reviews}")
+    print(f"Likes (account total): {result.likes}")
+    print(f"Skipped rows: {len(result.issues)}")
+    for issue in result.issues[:20]:
+        print(f"  {issue.filename}:{issue.row}: {issue.message}", file=sys.stderr)
+    if len(result.issues) > 20:
+        print(f"  ... {len(result.issues) - 20} more skipped rows", file=sys.stderr)
+    return 1 if result.issues else 0
+
+
+def personal_status(args: argparse.Namespace) -> int:
+    from .application import GetPersonalLibraryStatus
+
+    try:
+        status = GetPersonalLibraryStatus().execute(args.username)
+    except (OSError, sqlite3.Error) as exc:
+        print(f"Personal status failed: {exc}", file=sys.stderr)
+        return 1
+    if status is None:
+        print(f"No personal library found for {args.username}.")
+        return 0
+    print(f"Personal Library: {status.username}")
+    print(f"Movies: {status.movies}")
+    print(f"Canonical matches: {status.canonical_matches}")
+    print(f"Unlinked movies: {status.movies - status.canonical_matches}")
+    print(f"Watch events: {status.watch_events}")
+    print(f"Ratings: {status.ratings}")
+    print(f"Reviews: {status.reviews}")
+    print(f"Likes: {status.likes}")
+    if status.last_sync:
+        print(f"Last sync: {status.last_sync['status']} ({status.last_sync['finished_at']} UTC)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     from .search_service import DEFAULT_SEARCH_LIMIT
 
@@ -443,6 +496,16 @@ def build_parser() -> argparse.ArgumentParser:
     metadata_sync_parser = metadata_subparsers.add_parser("sync")
     metadata_sync_parser.add_argument("title")
     metadata_sync_parser.set_defaults(func=metadata_sync)
+
+    personal_parser = subparsers.add_parser("personal", help="Import and inspect a personal Letterboxd library")
+    personal_commands = personal_parser.add_subparsers(dest="personal_command", required=True)
+    personal_sync_parser = personal_commands.add_parser("sync", help="Import an extracted Letterboxd export")
+    personal_sync_parser.add_argument("--source", required=True, help="Directory containing exported CSV files")
+    personal_sync_parser.add_argument("--username", required=True, help="Letterboxd account username")
+    personal_sync_parser.set_defaults(func=personal_sync)
+    personal_status_parser = personal_commands.add_parser("status", help="Show local account totals")
+    personal_status_parser.add_argument("--username", required=True)
+    personal_status_parser.set_defaults(func=personal_status)
 
     for command in ("providers", "chat"):
         subparser = subparsers.add_parser(command)

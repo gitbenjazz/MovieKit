@@ -1,4 +1,6 @@
 from .use_cases import (
+    GetPersonalLibraryStatus,
+    SyncPersonalLibrary,
     SearchMovies,
     InitializeDatabase,
     SingleMovieAvailabilityResult,
@@ -12,6 +14,8 @@ from .use_cases import (
 )
 
 __all__ = [
+    "GetPersonalLibraryStatus",
+    "SyncPersonalLibrary",
     "SearchMovies",
     "InitializeDatabase",
     "SingleMovieAvailabilityResult",

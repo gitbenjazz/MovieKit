@@ -275,3 +275,48 @@ class InitializeDatabase:
 
     def execute(self):
         return self.initializer(self.database_path)
+
+
+class SyncPersonalLibrary:
+    def __init__(self, service=None):
+        if service is None:
+            from ..personal_library_sync import PersonalLibrarySyncService
+
+            service = PersonalLibrarySyncService()
+        self.service = service
+
+    def execute(self, source, username):
+        return self.service.sync(source, username)
+
+
+@dataclass(frozen=True)
+class PersonalLibraryStatus:
+    username: str
+    movies: int
+    canonical_matches: int
+    watch_events: int
+    ratings: int
+    reviews: int
+    likes: int
+    last_sync: dict | None
+
+
+class GetPersonalLibraryStatus:
+    def __init__(self, repository=None):
+        if repository is None:
+            from ..personal_library_repository import PersonalLibraryRepository
+
+            repository = PersonalLibraryRepository()
+        self.repository = repository
+
+    def execute(self, username):
+        account = self.repository.find_account("letterboxd", username.strip().lower())
+        if account is None:
+            return None
+        library = self.repository.get_personal_library(account.id)
+        return PersonalLibraryStatus(
+            account.username, len(library.movies),
+            sum(m.canonical_movie_id is not None for m in library.movies),
+            len(library.watch_events), len(library.ratings), len(library.reviews),
+            len(library.likes), self.repository.latest_sync_run(account.id),
+        )

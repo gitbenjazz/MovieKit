@@ -12,7 +12,10 @@ MovieKit Phase 1 manages the canonical Letterboxd 1001 movie library imported fr
 - Watched imports must never create additional movies.
 - Metadata and availability synchronization enrich existing movies only.
 
-Personal Letterboxd library synchronization is a future milestone. That future phase may intentionally import watched movies outside the 1001 list, ratings, reviews, diary entries, favorites/likes, and additional metadata. It is not part of Phase 1.
+Personal Library synchronization is available separately through `moviekit personal sync`.
+It imports account-owned films and activity into Schema v3 personal tables, including
+films outside the canonical list, without broadening `movies` or changing Phase 1
+recommendations.
 
 ## What's New in v0.2
 
@@ -99,6 +102,39 @@ existing behavior. Recommendations still use CSV order and Prime Video US
 subscription availability reported by TMDb, not a personalized ranking.
 They require network access and `TMDB_API_KEY`. CSV watched matching still
 uses title and year, so differently named titles can require correction.
+
+## Personal Library (Sprint 6)
+
+Download and extract the official Letterboxd account export. Supply the directory
+containing its CSV files and your Letterboxd username:
+
+```bash
+.venv/bin/moviekit personal sync --source "/path/to/extracted-letterboxd-export" --username themonkous
+.venv/bin/moviekit personal status --username themonkous
+```
+
+If that export is in the existing Documents folder:
+
+```bash
+.venv/bin/moviekit personal sync --source "/Users/hatimbenmeziane/Documents/letterboxd-1001" --username themonkous
+```
+
+Supported files: `watched.csv`, `ratings.csv`, `diary.csv`, `reviews.csv`, and
+`likes/films.csv`. Missing optional files are allowed. A folder containing only
+`watched.csv` imports watched films but cannot provide missing reviews or ratings.
+Use the extracted directory, not the ZIP archive. No scraping or TMDb calls occur.
+
+The sync reports processed movies, canonical match states, inserted/changed records,
+account activity totals, and skipped rows. Status shows local account totals and the
+last synchronization result. Exit status is 0 for success, 1 for import failure or
+partial success with skipped rows, and 2 for invalid command syntax. On partial
+success, valid rows are committed and the errors identify the source file and row.
+
+Re-imports are idempotent. Partial exports do not delete absent personal data.
+Personal synchronization does **not** refresh the Phase 1 recommendation history;
+continue using the `watched.csv` + `moviekit sync` workflow above for that.
+See [Personal Library synchronization](docs/PERSONAL_LIBRARY_SYNC.md) for identity,
+watch-event reconciliation, transaction guarantees, and current limitations.
 
 ## Development checks
 
