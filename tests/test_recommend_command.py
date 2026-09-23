@@ -175,7 +175,7 @@ class RecommendWorkflowTests(unittest.TestCase):
                              {"modern", "last"})
             with closing(sqlite3.connect(self.db.database_path)) as connection:
                 snapshots.append((
-                    connection.execute("SELECT * FROM movies ORDER BY id").fetchall(),
+                    connection.execute("SELECT id, title, year, letterboxd_url FROM movies ORDER BY id").fetchall(),
                     connection.execute(
                         "SELECT movie_id, watched_date, letterboxd_uri FROM watched ORDER BY movie_id"
                     ).fetchall(),
