@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
 from typing import Iterable, Union
@@ -35,10 +35,11 @@ class PersonalLibraryRepository:
             database_path = load_config().database_path
         self.database_path = Path(database_path)
         initialize_database(self.database_path)
+        self._active_connection = None
 
     def upsert_account(self, account: AccountRecord) -> Account:
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 connection.execute(
                     """
                     INSERT INTO accounts (
@@ -72,13 +73,13 @@ class PersonalLibraryRepository:
         return self._account_from_row(row)
 
     def find_account(self, source: str, username: str) -> Account | None:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             row = self._account_row(connection, source=source, username=username)
 
         return self._account_from_row(row) if row is not None else None
 
     def get_account(self, account_id: int) -> Account | None:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             row = connection.execute(
                 """
                 SELECT
@@ -96,8 +97,8 @@ class PersonalLibraryRepository:
         return self._account_from_row(row) if row is not None else None
 
     def upsert_personal_movie(self, movie: PersonalMovieRecord) -> PersonalMovie:
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 existing = self._find_personal_movie_row(
                     connection,
                     account_id=movie.account_id,
@@ -159,7 +160,7 @@ class PersonalLibraryRepository:
         letterboxd_url: str | None = None,
         letterboxd_uri: str | None = None,
     ) -> PersonalMovie | None:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             row = self._find_personal_movie_row(
                 connection,
                 account_id=account_id,
@@ -170,7 +171,7 @@ class PersonalLibraryRepository:
         return self._personal_movie_from_row(row) if row is not None else None
 
     def get_personal_movie(self, personal_movie_id: int) -> PersonalMovie | None:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             row = self._personal_movie_row(connection, personal_movie_id)
 
         return self._personal_movie_from_row(row) if row is not None else None
@@ -180,8 +181,8 @@ class PersonalLibraryRepository:
         personal_movie_id: int,
         canonical_movie_id: int,
     ) -> PersonalMovie:
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 connection.execute(
                     """
                     UPDATE personal_movies
@@ -205,8 +206,8 @@ class PersonalLibraryRepository:
     ) -> list[WatchEvent]:
         event_list = list(events)
 
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 event_ids = [
                     self._save_watch_event(connection, event) for event in event_list
                 ]
@@ -220,8 +221,8 @@ class PersonalLibraryRepository:
     def save_ratings(self, ratings: Iterable[RatingRecord]) -> list[Rating]:
         rating_list = list(ratings)
 
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 for rating in rating_list:
                     connection.execute(
                         """
@@ -258,8 +259,8 @@ class PersonalLibraryRepository:
     def save_reviews(self, reviews: Iterable[ReviewRecord]) -> list[Review]:
         review_list = list(reviews)
 
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 review_ids = [
                     self._save_review(connection, review) for review in review_list
                 ]
@@ -273,8 +274,8 @@ class PersonalLibraryRepository:
     def save_likes(self, likes: Iterable[LikeRecord]) -> list[Like]:
         like_list = list(likes)
 
-        with closing(self._connection()) as connection:
-            with connection:
+        with self._session() as connection:
+            with self._write(connection):
                 for like in like_list:
                     connection.execute(
                         """
@@ -329,7 +330,7 @@ class PersonalLibraryRepository:
 
         query += " ORDER BY watched_date, id"
 
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             rows = connection.execute(query, parameters).fetchall()
 
         return [self._watch_event_from_row(row) for row in rows]
@@ -339,7 +340,7 @@ class PersonalLibraryRepository:
         account_id: int,
         personal_movie_id: int,
     ) -> Rating | None:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             row = self._rating_row(connection, account_id, personal_movie_id)
 
         return self._rating_from_row(row) if row is not None else None
@@ -370,7 +371,7 @@ class PersonalLibraryRepository:
 
         query += " ORDER BY reviewed_at, id"
 
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             rows = connection.execute(query, parameters).fetchall()
 
         return [self._review_from_row(row) for row in rows]
@@ -380,13 +381,13 @@ class PersonalLibraryRepository:
         account_id: int,
         personal_movie_id: int,
     ) -> Like | None:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             row = self._like_row(connection, account_id, personal_movie_id)
 
         return self._like_from_row(row) if row is not None else None
 
     def get_personal_movies(self, account_id: int) -> list[PersonalMovie]:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             rows = connection.execute(
                 """
                 SELECT
@@ -544,7 +545,7 @@ class PersonalLibraryRepository:
         return int(row["id"])
 
     def _get_ratings(self, account_id: int) -> list[Rating]:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             rows = connection.execute(
                 """
                 SELECT
@@ -562,7 +563,7 @@ class PersonalLibraryRepository:
         return [self._rating_from_row(row) for row in rows]
 
     def _get_likes(self, account_id: int) -> list[Like]:
-        with closing(self._connection()) as connection:
+        with self._session() as connection:
             rows = connection.execute(
                 """
                 SELECT
@@ -578,6 +579,78 @@ class PersonalLibraryRepository:
             ).fetchall()
 
         return [self._like_from_row(row) for row in rows]
+
+    @contextmanager
+    def transaction(self):
+        """All repository operations in this scope commit or roll back together."""
+        if self._active_connection is not None:
+            raise RuntimeError("Nested personal library transaction")
+        with closing(self._connection()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._active_connection = connection
+            try:
+                yield self
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+            finally:
+                self._active_connection = None
+
+    @contextmanager
+    def _session(self):
+        if self._active_connection is not None:
+            yield self._active_connection
+        else:
+            with closing(self._connection()) as connection:
+                yield connection
+
+    @contextmanager
+    def _write(self, connection):
+        if self._active_connection is connection:
+            yield
+        else:
+            with connection:
+                yield
+
+    def rekey_watch_event(self, event_id: int, source_uri: str) -> None:
+        with self._session() as connection:
+            with self._write(connection):
+                connection.execute(
+                    "UPDATE watch_events SET letterboxd_uri = ? WHERE id = ?",
+                    (source_uri, event_id),
+                )
+
+    def remove_watch_marker(self, account_id: int, movie_id: int) -> None:
+        """A dated diary event supersedes the undated 'marked watched' placeholder."""
+        with self._session() as connection:
+            with self._write(connection):
+                connection.execute(
+                    "DELETE FROM watch_events WHERE account_id = ? AND personal_movie_id = ? "
+                    "AND source = 'letterboxd_watched' AND watched_date IS NULL",
+                    (account_id, movie_id),
+                )
+
+    def record_sync_run(self, account_id, *, status, seen, inserted=0, updated=0,
+                        skipped=0, error=None) -> int:
+        with self._session() as connection:
+            with self._write(connection):
+                cursor = connection.execute(
+                    """INSERT INTO sync_runs
+                    (account_id, source, sync_type, status, records_seen,
+                     records_inserted, records_updated, records_skipped, error_message, finished_at)
+                    VALUES (?, 'letterboxd', 'personal_export', ?, ?, ?, ?, ?, ?, datetime('now'))""",
+                    (account_id, status, seen, inserted, updated, skipped, error),
+                )
+                return int(cursor.lastrowid)
+
+    def latest_sync_run(self, account_id: int):
+        with self._session() as connection:
+            row = connection.execute(
+                "SELECT * FROM sync_runs WHERE account_id = ? ORDER BY id DESC LIMIT 1",
+                (account_id,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def _connection(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)

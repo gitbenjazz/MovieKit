@@ -38,22 +38,30 @@ class CanonicalLink:
 
 class CanonicalMovieLinker:
     def __init__(self, canonical_movies):
-        self.movies = tuple(canonical_movies)
+        self.by_uri = {}
+        self.by_tmdb = {}
+        self.by_title_year = {}
+        for movie in canonical_movies:
+            uri = normalized_uri(movie.letterboxd_url)
+            if uri:
+                self.by_uri.setdefault(uri, set()).add(movie.id)
+            if movie.tmdb_id is not None:
+                self.by_tmdb.setdefault(movie.tmdb_id, set()).add(movie.id)
+            self.by_title_year.setdefault((normalized_title(movie.title), movie.year), set()).add(movie.id)
 
     def match(self, movie: MovieIdentity, tmdb_id: int | None = None) -> CanonicalLink:
         identifiers = {uri for uri in (
             normalized_uri(movie.letterboxd_url), normalized_uri(movie.letterboxd_uri)
         ) if uri}
         identifiers.update(url for uri in tuple(identifiers) if (url := film_url(uri)))
-        by_uri = {m.id for m in self.movies if normalized_uri(m.letterboxd_url) in identifiers}
-        by_tmdb = {m.id for m in self.movies if tmdb_id is not None and m.tmdb_id == tmdb_id}
+        by_uri = set().union(*(self.by_uri.get(uri, set()) for uri in identifiers))
+        by_tmdb = self.by_tmdb.get(tmdb_id, set())
         strong = by_uri | by_tmdb
         if strong:
             return self._result(strong, "letterboxd" if by_uri else "tmdb")
         if movie.year is None:
             return CanonicalLink(LinkState.UNMATCHED)
-        matches = {m.id for m in self.movies
-                   if m.year == movie.year and normalized_title(m.title) == normalized_title(movie.title)}
+        matches = self.by_title_year.get((normalized_title(movie.title), movie.year), set())
         return self._result(matches, "title_year")
 
     @staticmethod
