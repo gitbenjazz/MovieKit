@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from typing import Optional
 
 
@@ -99,11 +100,18 @@ def _print_bulk_sync_counts(result) -> None:
 def recommend(_args: Optional[argparse.Namespace] = None) -> int:
     """Print the top 10 recommended unwatched movies."""
     from .application import RecommendTopMovies
+    from .recommendation_service import InvalidYearRange
 
-    prime_movies = RecommendTopMovies().execute(
-        limit=10,
-        verbose=True,
-    )
+    try:
+        prime_movies = RecommendTopMovies().execute(
+            limit=10,
+            verbose=True,
+            from_year=getattr(_args, "from_year", None),
+            to_year=getattr(_args, "to_year", None),
+        )
+    except InvalidYearRange as exc:
+        print(f"moviekit recommend: error: {exc}", file=sys.stderr)
+        return 2
 
     print("\n========== TOP 10 ==========\n")
 
@@ -391,6 +399,12 @@ def build_parser() -> argparse.ArgumentParser:
     sync_all_parser.set_defaults(func=sync_all)
 
     recommend_parser = subparsers.add_parser("recommend")
+    recommend_parser.add_argument(
+        "--from-year", type=int, help="Include movies released in this year or later"
+    )
+    recommend_parser.add_argument(
+        "--to-year", type=int, help="Include movies released in this year or earlier"
+    )
     recommend_parser.set_defaults(func=recommend)
 
     tonight_parser = subparsers.add_parser("tonight")

@@ -67,10 +67,18 @@ class RecommendTopMovies:
 
         self.recommendation_function = recommendation_function
 
-    def execute(self, limit: int = 10, verbose: bool = True):
+    def execute(
+        self,
+        limit: int = 10,
+        verbose: bool = True,
+        from_year: int | None = None,
+        to_year: int | None = None,
+    ):
         return self.recommendation_function(
             limit=limit,
             verbose=verbose,
+            from_year=from_year,
+            to_year=to_year,
         )
 
 

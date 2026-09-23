@@ -9,6 +9,10 @@ from .tmdb_client import load_tmdb_api_key
 BASE = "https://api.themoviedb.org/3"
 
 
+class InvalidYearRange(ValueError):
+    """The requested recommendation year interval is invalid."""
+
+
 def search_movie(title: str, year: int, api_key: Optional[str]) -> Optional[int]:
     """Search TMDB for a movie and return the first matching movie id."""
     title = title.rsplit("(", 1)[0].strip()
@@ -58,8 +62,13 @@ def top_recommended_unwatched_movies(
     repository: Optional[MovieRepository] = None,
     api_key: Optional[str] = None,
     verbose: bool = True,
+    from_year: Optional[int] = None,
+    to_year: Optional[int] = None,
 ) -> List[str]:
     """Return the first unwatched 1001 movies available on Prime Video."""
+    if from_year is not None and to_year is not None and from_year > to_year:
+        raise InvalidYearRange("--from-year must be less than or equal to --to-year")
+
     if api_key is None:
         api_key = load_tmdb_api_key()
 
@@ -74,6 +83,11 @@ def top_recommended_unwatched_movies(
         title = row["title"]
 
         year = int(title[-5:-1])
+
+        if from_year is not None and year < from_year:
+            continue
+        if to_year is not None and year > to_year:
+            continue
 
         if verbose:
             print("Checking:", title)
