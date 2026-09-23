@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import closing
-from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 from typing import Iterable, Union
@@ -11,128 +10,21 @@ from .database import initialize_database
 DatabasePath = Union[str, Path]
 
 
-@dataclass(frozen=True)
-class AccountRecord:
-    source: str
-    username: str
-    display_name: str | None = None
-    profile_url: str | None = None
-
-
-@dataclass(frozen=True)
-class Account:
-    id: int
-    source: str
-    username: str
-    display_name: str | None
-    profile_url: str | None
-
-
-@dataclass(frozen=True)
-class PersonalMovieRecord:
-    account_id: int
-    title: str
-    year: int | None = None
-    letterboxd_url: str | None = None
-    letterboxd_uri: str | None = None
-    canonical_movie_id: int | None = None
-
-
-@dataclass(frozen=True)
-class PersonalMovie:
-    id: int
-    account_id: int
-    canonical_movie_id: int | None
-    title: str
-    year: int | None
-    letterboxd_url: str | None
-    letterboxd_uri: str | None
-
-
-@dataclass(frozen=True)
-class WatchEventRecord:
-    account_id: int
-    personal_movie_id: int
-    watched_date: str | None = None
-    letterboxd_uri: str | None = None
-    source: str = "letterboxd"
-    is_rewatch: bool = False
-
-
-@dataclass(frozen=True)
-class WatchEvent:
-    id: int
-    account_id: int
-    personal_movie_id: int
-    watched_date: str | None
-    letterboxd_uri: str | None
-    source: str
-    is_rewatch: bool
-
-
-@dataclass(frozen=True)
-class RatingRecord:
-    account_id: int
-    personal_movie_id: int
-    rating: float
-    rated_at: str | None = None
-
-
-@dataclass(frozen=True)
-class Rating:
-    account_id: int
-    personal_movie_id: int
-    rating: float
-    rated_at: str | None
-
-
-@dataclass(frozen=True)
-class ReviewRecord:
-    account_id: int
-    personal_movie_id: int
-    watch_event_id: int | None = None
-    review_uri: str | None = None
-    review_text: str | None = None
-    rating: float | None = None
-    reviewed_at: str | None = None
-
-
-@dataclass(frozen=True)
-class Review:
-    id: int
-    account_id: int
-    personal_movie_id: int
-    watch_event_id: int | None
-    review_uri: str | None
-    review_text: str | None
-    rating: float | None
-    reviewed_at: str | None
-
-
-@dataclass(frozen=True)
-class LikeRecord:
-    account_id: int
-    personal_movie_id: int
-    liked_at: str | None = None
-    source_uri: str | None = None
-
-
-@dataclass(frozen=True)
-class Like:
-    account_id: int
-    personal_movie_id: int
-    liked_at: str | None
-    source_uri: str | None
-
-
-@dataclass(frozen=True)
-class PersonalLibraryData:
-    account: Account
-    movies: list[PersonalMovie]
-    watch_events: list[WatchEvent]
-    ratings: list[Rating]
-    reviews: list[Review]
-    likes: list[Like]
+from .personal_library_models import (
+    AccountRecord,
+    Account,
+    PersonalMovieRecord,
+    PersonalMovie,
+    WatchEventRecord,
+    WatchEvent,
+    RatingRecord,
+    Rating,
+    ReviewRecord,
+    Review,
+    LikeRecord,
+    Like,
+    PersonalLibraryData,
+)
 
 
 class PersonalLibraryRepository:
