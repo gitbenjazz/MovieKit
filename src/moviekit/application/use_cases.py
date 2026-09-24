@@ -320,3 +320,15 @@ class GetPersonalLibraryStatus:
             len(library.watch_events), len(library.ratings), len(library.reviews),
             len(library.likes), self.repository.latest_sync_run(account.id),
         )
+
+
+class GetPersonalStats:
+    def __init__(self, service=None):
+        if service is None:
+            from ..personal_analytics_service import PersonalAnalyticsService
+
+            service = PersonalAnalyticsService()
+        self.service = service
+
+    def execute(self, username):
+        return self.service.stats(username)

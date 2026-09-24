@@ -1,4 +1,5 @@
 from .use_cases import (
+    GetPersonalStats,
     GetPersonalLibraryStatus,
     SyncPersonalLibrary,
     SearchMovies,
@@ -14,6 +15,7 @@ from .use_cases import (
 )
 
 __all__ = [
+    "GetPersonalStats",
     "GetPersonalLibraryStatus",
     "SyncPersonalLibrary",
     "SearchMovies",

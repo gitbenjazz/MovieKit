@@ -8,7 +8,10 @@ This guide captures the conventions used by the MovieKit codebase.
 - `src/moviekit/bulk_sync_service.py`: library-wide synchronization orchestration.
 - `src/moviekit/config.py`: user configuration loading and persistence.
 - `src/moviekit/database.py`: SQLite schema and database initialization.
-- `src/moviekit/database_repository.py`: all SQLite reads and writes.
+- `src/moviekit/database_repository.py`: canonical SQLite reads and writes.
+- `src/moviekit/personal_analytics_repository.py`: read-only, account-scoped analytics snapshots.
+- `src/moviekit/personal_analytics_service.py`: analytics calculations and preference ordering.
+- `src/moviekit/personal_analytics_models.py`: typed analytics input/output records.
 - `src/moviekit/metadata_service.py`: single-movie TMDb metadata synchronization.
 - `src/moviekit/movie_repository.py`: CSV loading and CSV-derived record creation.
 - `src/moviekit/provider_backend.py`: provider availability backend interface.
@@ -22,7 +25,8 @@ This guide captures the conventions used by the MovieKit codebase.
 
 ## Layering Rules
 
-- Keep SQL inside `database_repository.py` unless the schema itself is being edited.
+- Keep SQL inside repository modules unless the schema itself is being edited.
+- Personal analytics uses a read-only SQLite connection and one read transaction for a consistent snapshot.
 - Keep CLI functions thin: parse arguments, call services, print results.
 - Put workflow logic in service classes.
 - Keep public CLI and service behavior stable unless a feature explicitly requires a change.

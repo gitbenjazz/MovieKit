@@ -432,6 +432,69 @@ def personal_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def personal_stats(args: argparse.Namespace) -> int:
+    from .application import GetPersonalStats
+    from .personal_analytics_service import PersonalAnalyticsService
+
+    try:
+        stats = GetPersonalStats().execute(args.username)
+    except (OSError, sqlite3.Error) as exc:
+        print(f"Personal stats unavailable: {exc}. Import a personal library first.", file=sys.stderr)
+        return 1
+    if stats is None:
+        print(f"No personal library found for {args.username}.")
+        return 0
+    print(f"Personal analytics: {stats.username}")
+    print(f"Library movies: {stats.movies}")
+    print(f"Watched movies: {stats.watched}")
+    print(f"Rated movies: {stats.rated}")
+    print(f"Liked movies: {stats.liked}")
+    average = f"{stats.average_rating:.2f}/5" if stats.average_rating is not None else "N/A"
+    print(f"Average personal rating: {average}")
+    print("Rating distribution (current personal ratings):")
+    for rating, count in stats.rating_distribution:
+        print(f"  {rating:.1f}: {count}")
+    if stats.invalid_ratings:
+        print(f"Invalid ratings excluded: {stats.invalid_ratings}")
+    print(f"Watch events: {stats.watch_events}")
+    print("Activity by viewing year (events):")
+    for year, count in stats.activity_by_year:
+        print(f"  {year}: {count}")
+    if not stats.activity_by_year:
+        print("  No dated viewing activity")
+    print(f"  Unknown/invalid viewing date: {stats.undated_events}")
+    print("Library movies by release decade:")
+    for decade, count in stats.decades:
+        print(f"  {decade}s: {count}")
+    print(f"  Unknown release year: {stats.unknown_release_year}")
+    print(f"Explicit rewatch events: {stats.rewatch_events} ({stats.rewatched_movies} movies)")
+    print(f"Movies with multiple logged watches: {stats.multiple_logged_watches}")
+    for label, groups, coverage in (
+        ("genres", stats.genres, stats.genre_coverage),
+        ("directors", stats.directors, stats.director_coverage),
+    ):
+        print(f"{label.capitalize()} metadata coverage: {coverage}/{stats.movies} library movies")
+        print(f"Highest-rated {label} (top 5):")
+        highest = PersonalAnalyticsService.highest_rated(groups)
+        for group in highest:
+            print(f"  {group.name}: {group.average_rating:.2f}/5 ({group.rated} rated movies)")
+        if not highest:
+            print("  Insufficient metadata or personal ratings")
+        print(f"Favorite {label} by film likes (top 5):")
+        favorites = PersonalAnalyticsService.favorites(groups)
+        for group in favorites:
+            print(f"  {group.name}: {group.liked} liked movies ({group.watched} watched)")
+        if not favorites:
+            print("  Insufficient metadata or film likes")
+    if stats.canonical_total:
+        percentage = stats.canonical_watched / stats.canonical_total * 100
+        print(f"Canonical 1001 progress (personal watches): {stats.canonical_watched}/{stats.canonical_total} ({percentage:.1f}%)")
+        print(f"Canonical remaining: {stats.canonical_total - stats.canonical_watched}")
+    else:
+        print("Canonical 1001 progress: N/A (canonical collection not loaded)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     from .search_service import DEFAULT_SEARCH_LIMIT
 
@@ -506,6 +569,9 @@ def build_parser() -> argparse.ArgumentParser:
     personal_status_parser = personal_commands.add_parser("status", help="Show local account totals")
     personal_status_parser.add_argument("--username", required=True)
     personal_status_parser.set_defaults(func=personal_status)
+    personal_stats_parser = personal_commands.add_parser("stats", help="Show local personal analytics")
+    personal_stats_parser.add_argument("--username", required=True)
+    personal_stats_parser.set_defaults(func=personal_stats)
 
     for command in ("providers", "chat"):
         subparser = subparsers.add_parser(command)

@@ -136,6 +136,41 @@ continue using the `watched.csv` + `moviekit sync` workflow above for that.
 See [Personal Library synchronization](docs/PERSONAL_LIBRARY_SYNC.md) for identity,
 watch-event reconciliation, transaction guarantees, and current limitations.
 
+## Personal Analytics (Sprint 7)
+
+```bash
+.venv/bin/moviekit personal stats --username themonkous
+```
+
+This command reads the local Personal Library without network calls or database
+writes. It reports watched/rated/liked film totals, current rating distribution,
+viewing activity by year, release decades, rewatches, genre/director preferences,
+and canonical progress. Missing dates and metadata are shown explicitly.
+
+- Watched totals count distinct personal films with a watch event; rated-only
+  and liked-only films are not assumed watched.
+- Activity uses actual `watched_date` values, not import dates. Undated watched
+  markers and invalid dates appear in the unknown bucket.
+- Decades cover all personal films, once each, including rated-only/liked-only films.
+- Rewatches show explicit rewatch flags and, separately, films with multiple logged
+  watches. Undated watched-state placeholders do not count as logged repeats.
+- Highest-rated genres/directors use current **personal** ratings, with sample
+  sizes shown. Favorites are ranked by film likes, not by public TMDb scores.
+- Genre/director metadata currently comes only from linked canonical films. The
+  command shows coverage; it does not fetch missing metadata or infer it from titles.
+- Canonical progress counts distinct canonical IDs linked to this account's watched
+  films, against the actual canonical collection size. It does not mix in Phase 1
+  `watched` or another account's history.
+
+Rankings show the top five. Mean-rating ties use rated-film count then name;
+like-count ties use watched-film count then name. No minimum sample threshold is
+imposed, so a one-film average is explicitly labeled as such. Multi-genre films
+and co-directed films contribute once to each group, never once per watch event.
+
+The figures describe the imported data, not live Letterboxd state. Missing
+metadata, unresolved identities, and incomplete exports limit coverage. Personal
+stats does not modify synchronization or recommendation behavior.
+
 ## Development checks
 
 ```bash
