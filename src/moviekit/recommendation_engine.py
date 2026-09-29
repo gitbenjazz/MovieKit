@@ -11,7 +11,7 @@ RECOMMENDATION_CANDIDATE_LIMIT = 20
 @dataclass(frozen=True)
 class Recommendation:
     movie: MovieDetails
-    score: int
+    score: float
     reasons: list[str]
     provider: str | None = None
 
@@ -19,6 +19,18 @@ class Recommendation:
 class RecommendationEngine:
     def __init__(self, database_repository: DatabaseRepository):
         self.database_repository = database_repository
+
+    @staticmethod
+    def rank(candidates, profile):
+        """Rank all eligible candidates before availability checks or truncation."""
+        recommendations = []
+        for movie in candidates:
+            score, reasons = profile.score(movie)
+            recommendations.append(Recommendation(movie, score, reasons))
+        return sorted(recommendations, key=lambda r: (
+            -r.score, r.movie.title.casefold(),
+            r.movie.year if r.movie.year is not None else 10000, r.movie.id,
+        ))
 
     def recommend_tonight(self) -> Recommendation | None:
         favorite_providers = get_favorite_providers()

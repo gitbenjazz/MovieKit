@@ -61,9 +61,9 @@ class RecommendTonight:
 class RecommendTopMovies:
     def __init__(self, recommendation_function=None):
         if recommendation_function is None:
-            from ..recommendation_service import top_recommended_unwatched_movies
+            from ..recommendation_service import recommend_unwatched_movies
 
-            recommendation_function = top_recommended_unwatched_movies
+            recommendation_function = recommend_unwatched_movies
 
         self.recommendation_function = recommendation_function
 
@@ -73,12 +73,14 @@ class RecommendTopMovies:
         verbose: bool = True,
         from_year: int | None = None,
         to_year: int | None = None,
+        username: str | None = None,
     ):
         return self.recommendation_function(
             limit=limit,
             verbose=verbose,
             from_year=from_year,
             to_year=to_year,
+            username=username,
         )
 
 

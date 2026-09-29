@@ -1,110 +1,92 @@
+from __future__ import annotations
+
+from dataclasses import replace
 import time
-from typing import List, Optional
 
-import requests
-
-from .movie_repository import MovieRepository
-from .tmdb_client import load_tmdb_api_key
-
-BASE = "https://api.themoviedb.org/3"
+from .database_repository import DatabaseRepository
+from .metadata_service import MetadataSyncService
+from .personal_analytics_repository import PersonalAnalyticsRepository
+from .personal_preferences import PersonalPreferenceProfile
+from .recommendation_engine import RecommendationEngine
+from .tmdb_client import TMDbClient, load_tmdb_api_key
 
 
 class InvalidYearRange(ValueError):
     """The requested recommendation year interval is invalid."""
 
 
-def search_movie(title: str, year: int, api_key: Optional[str]) -> Optional[int]:
-    """Search TMDB for a movie and return the first matching movie id."""
-    title = title.rsplit("(", 1)[0].strip()
-
-    r = requests.get(
-        f"{BASE}/search/movie",
-        params={
-            "api_key": api_key,
-            "query": title,
-            "year": int(year),
-        },
-        timeout=20,
-    )
-
-    results = r.json().get("results", [])
-
-    if not results:
-        return None
-
-    return results[0]["id"]
+class RecommendationAccountError(ValueError):
+    pass
 
 
-def has_prime(movie_id: int, api_key: Optional[str]) -> bool:
-    """Return True when the movie is available on Prime Video flatrate in the US."""
-    r = requests.get(
-        f"{BASE}/movie/{movie_id}/watch/providers",
-        params={"api_key": api_key},
-        timeout=20,
-    )
-
-    data = r.json()
-
-    us = data.get("results", {}).get("US", {})
-
-    # Only subscription services (NOT rent/buy)
-    providers = us.get("flatrate", [])
-
-    for p in providers:
-        if p["provider_name"] == "Amazon Prime Video":
-            return True
-
-    return False
+def search_movie(title, year, api_key):
+    data = TMDbClient(api_key=api_key).get_json("search/movie", params={"query": title, "year": year})
+    matches = MetadataSyncService._matching_candidates(data.get("results", []), title, year)
+    return matches[0]["id"] if len(matches) == 1 else None
 
 
-def top_recommended_unwatched_movies(
-    limit: int = 10,
-    repository: Optional[MovieRepository] = None,
-    api_key: Optional[str] = None,
-    verbose: bool = True,
-    from_year: Optional[int] = None,
-    to_year: Optional[int] = None,
-) -> List[str]:
-    """Return the first unwatched 1001 movies available on Prime Video."""
+def has_prime(movie_id, api_key):
+    data = TMDbClient(api_key=api_key).get_json(f"movie/{movie_id}/watch/providers")
+    providers = data.get("results", {}).get("US", {}).get("flatrate", [])
+    return any(p.get("provider_name") in {"Amazon Prime Video", "Amazon Prime Video with Ads"}
+               for p in providers)
+
+
+def recommend_unwatched_movies(limit=10, repository=None, api_key=None, verbose=True,
+                               from_year=None, to_year=None, username=None, analytics_repository=None):
     if from_year is not None and to_year is not None and from_year > to_year:
         raise InvalidYearRange("--from-year must be less than or equal to --to-year")
-
+    if limit <= 0:
+        return []
+    repository = repository or DatabaseRepository()
+    analytics = analytics_repository or PersonalAnalyticsRepository(repository.database_path)
+    usernames = analytics.usernames()
+    if username is not None:
+        username = username.strip().lower()
+        if username not in usernames:
+            raise RecommendationAccountError(f"No personal library found for {username}")
+    elif len(usernames) > 1:
+        raise RecommendationAccountError("Multiple personal accounts: specify --username")
+    elif usernames:
+        username = usernames[0]
+    profile = PersonalPreferenceProfile(analytics.snapshot(username) if username else None)
+    candidates = []
+    for movie in repository.get_unwatched_movies():
+        if movie.id in profile.watched_canonical_ids:
+            continue
+        if from_year is not None and (movie.year is None or movie.year < from_year):
+            continue
+        if to_year is not None and (movie.year is None or movie.year > to_year):
+            continue
+        details = repository.get_movie_details(movie.id)
+        if details is not None:
+            candidates.append(details)
+    ranked = RecommendationEngine.rank(candidates, profile)
     if api_key is None:
         api_key = load_tmdb_api_key()
-
-    if repository is None:
-        repository = MovieRepository()
-
-    movies = repository.load_unwatched_1001()
-    prime_movies = []
-
-    for _, row in movies.iterrows():
-
-        title = row["title"]
-
-        year = int(title[-5:-1])
-
-        if from_year is not None and year < from_year:
-            continue
-        if to_year is not None and year > to_year:
-            continue
-
+    if verbose:
+        print(f"Preference profile: {username or 'none (neutral ranking)'}")
+    results = []
+    for recommendation in ranked:
+        movie = recommendation.movie
         if verbose:
-            print("Checking:", title)
-
-        movie_id = search_movie(title, year, api_key)
-
+            print(f"Checking: {movie.title} ({movie.year})")
+        movie_id = movie.tmdb_id
+        if movie_id is None and movie.year is not None:
+            movie_id = search_movie(movie.title, movie.year, api_key)
         if movie_id is None:
             continue
-
         if has_prime(movie_id, api_key):
-            if verbose:
-                print("   ✓ Prime")
-            prime_movies.append(title)
-
-        if len(prime_movies) == limit:
-            break
-
+            results.append(replace(recommendation, provider="Amazon Prime Video US (subscription)"))
+            if len(results) == limit:
+                break
         time.sleep(0.2)
+    return results
 
-    return prime_movies
+
+def top_recommended_unwatched_movies(limit=10, repository=None, api_key=None, verbose=True,
+                                    from_year=None, to_year=None, username=None):
+    """Compatibility title-list helper; CLI uses the structured results above."""
+    results = recommend_unwatched_movies(limit, repository, api_key, verbose,
+                                        from_year, to_year, username)
+    return [f"{r.movie.title} ({r.movie.year})" for r in results]

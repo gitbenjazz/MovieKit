@@ -16,6 +16,13 @@ class PersonalAnalyticsRepository:
             database_path = load_config().database_path
         self.database_path = Path(database_path)
 
+    def usernames(self) -> list[str]:
+        uri = self.database_path.resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as connection:
+            return [row[0] for row in connection.execute(
+                "SELECT username FROM accounts WHERE source = 'letterboxd' ORDER BY username"
+            )]
+
     def snapshot(self, username: str) -> AnalyticsSnapshot | None:
         uri = self.database_path.resolve().as_uri() + "?mode=ro"
         with closing(sqlite3.connect(uri, uri=True)) as connection:

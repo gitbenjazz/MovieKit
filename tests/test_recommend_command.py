@@ -36,8 +36,8 @@ class RecommendWorkflowTests(unittest.TestCase):
             watched_1001_path=str(self.root / "watched1001.csv"),
             unwatched_1001_path=str(self.root / "unwatched1001.csv"),
         )
-        # Deliberately not chronological: preserve the existing candidate order.
-        self.titles = ["Modern (2000)", "Boundary (1970)", "Old (1969)", "Last (1999)"]
+        # Neutral ranking uses title order, independently of release year.
+        self.titles = ["boundary (1970)", "last (1999)", "modern (2000)", "old (1969)"]
         self.write_csv(self.csv.movies_path, ["title", "link"], [
             [title, f"https://letterboxd.com/film/{title.split()[0].lower()}/"]
             for title in self.titles
@@ -72,14 +72,14 @@ class RecommendWorkflowTests(unittest.TestCase):
 
     def recommend(self, **kwargs):
         return top_recommended_unwatched_movies(
-            repository=self.csv, verbose=False, **kwargs
+            repository=self.db, verbose=False, **kwargs
         )
 
     def run_cli(self, arguments):
         stdout, stderr = StringIO(), StringIO()
         with ExitStack() as stack:
             stack.enter_context(patch.object(sys, "argv", ["moviekit", *arguments]))
-            for module in ("movie_repository", "recommendation_service"):
+            for module in ("movie_repository",):
                 stack.enter_context(patch(
                     f"moviekit.{module}.MovieRepository", return_value=self.csv
                 ))
@@ -96,25 +96,48 @@ class RecommendWorkflowTests(unittest.TestCase):
         self.prime.side_effect = [False, True, False, True]
         self.assertEqual(self.recommend(), [self.titles[1], self.titles[3]])
 
+    def test_cli_unknown_account_is_actionable_and_does_not_call_tmdb(self):
+        code, stdout, stderr = self.run_cli(["recommend", "--username", "missing"])
+        self.assertEqual(code, 2)
+        self.assertIn("No personal library found", stderr)
+        self.assertNotIn("TOP 10", stdout)
+        self.search.assert_not_called()
+
+    def test_cli_exposes_neutral_score_and_reasons_without_history(self):
+        code, stdout, stderr = self.run_cli(["recommend"])
+        self.assertEqual(code, 0, stderr)
+        self.assertIn("Score: 0.00", stdout)
+        self.assertIn("neutral score", stdout)
+        self.assertIn("Amazon Prime Video US (subscription)", stdout)
+
+    def test_cli_availability_error_does_not_claim_empty_results(self):
+        from moviekit.tmdb_client import TMDbAPIError
+        self.prime.side_effect = TMDbAPIError("TMDb request failed")
+        code, stdout, stderr = self.run_cli(["recommend"])
+        self.assertEqual(code, 1)
+        self.assertIn("TMDb request failed", stderr)
+        self.assertNotIn("No eligible", stdout)
+
     def test_year_filters_before_provider_lookup_and_limit(self):
         cases = [
             ({}, self.titles),
-            ({"from_year": 1970}, [self.titles[i] for i in (0, 1, 3)]),
-            ({"to_year": 1999}, [self.titles[i] for i in (1, 2, 3)]),
-            ({"from_year": 1970, "to_year": 1999}, [self.titles[i] for i in (1, 3)]),
-            ({"from_year": 1970, "to_year": 1970}, [self.titles[1]]),
+            ({"from_year": 1970}, [self.titles[i] for i in (0, 1, 2)]),
+            ({"to_year": 1999}, [self.titles[i] for i in (0, 1, 3)]),
+            ({"from_year": 1970, "to_year": 1999}, [self.titles[i] for i in (0, 1)]),
+            ({"from_year": 1970, "to_year": 1970}, [self.titles[0]]),
             ({"from_year": 2100}, []),
         ]
         for filters, expected in cases:
             with self.subTest(filters=filters):
                 self.search.reset_mock()
                 self.assertEqual(self.recommend(**filters), expected)
-                self.assertEqual([call.args[0] for call in self.search.call_args_list], expected)
+                self.assertEqual([call.args[0] for call in self.search.call_args_list],
+                                 [title.rsplit(" (", 1)[0] for title in expected])
         self.assertEqual(self.recommend(from_year=1970, to_year=1999, limit=1),
-                         [self.titles[1]])
+                         [self.titles[0]])
 
     def test_invalid_range_rejected_before_reading_candidates_or_network(self):
-        with patch.object(self.csv, "load_unwatched_1001") as load:
+        with patch.object(self.db, "get_unwatched_movies") as load:
             with self.assertRaises(InvalidYearRange):
                 self.recommend(from_year=2000, to_year=1970)
         load.assert_not_called()
@@ -124,18 +147,18 @@ class RecommendWorkflowTests(unittest.TestCase):
     def test_cli_year_options_and_default_behavior(self):
         cases = [
             ([], self.titles),
-            (["--from-year", "1970"], [self.titles[i] for i in (0, 1, 3)]),
-            (["--to-year", "1999"], [self.titles[i] for i in (1, 2, 3)]),
+            (["--from-year", "1970"], [self.titles[i] for i in (0, 1, 2)]),
+            (["--to-year", "1999"], [self.titles[i] for i in (0, 1, 3)]),
             (["--from-year", "1970", "--to-year", "1999"],
-             [self.titles[i] for i in (1, 3)]),
+             [self.titles[i] for i in (0, 1)]),
         ]
         for options, expected in cases:
             with self.subTest(options=options):
                 code, output, error = self.run_cli(["recommend", *options])
                 self.assertEqual(code, 0)
                 self.assertEqual(error, "")
-                self.assertEqual(output.split("========== TOP 10 ==========")[1].split(),
-                                 "\n".join(expected).split())
+                self.assertEqual([line.split(" | Score:")[0] for line in output.splitlines()
+                                  if " | Score:" in line], expected)
 
     def test_cli_invalid_range_has_nonzero_exit_and_no_network(self):
         code, output, error = self.run_cli([
@@ -156,7 +179,7 @@ class RecommendWorkflowTests(unittest.TestCase):
             ["2026-09-01", "Old", 1969, "https://boxd.it/old"],
         ])
         self.run_cli(["sync"])
-        self.assertEqual(self.recommend(), [self.titles[i] for i in (0, 1, 3)])
+        self.assertEqual(self.recommend(), [self.titles[i] for i in (0, 1, 2)])
         self.write_watched([
             ["2026-09-01", "Old", 1969, "https://boxd.it/old"],
             ["2026-09-22", "Boundary", 1970, "https://boxd.it/boundary"],
@@ -168,9 +191,9 @@ class RecommendWorkflowTests(unittest.TestCase):
             self.assertEqual((code, error), (0, ""))
             self.assertIn("SQLite watched history imported: 2", output)
             self.assertIn("SQLite watched history skipped: 1", output)
-            self.assertEqual(self.recommend(), [self.titles[i] for i in (0, 3)])
+            self.assertEqual(self.recommend(), [self.titles[i] for i in (1, 2)])
             self.assertEqual(self.recommend(from_year=1970, to_year=1999),
-                             [self.titles[3]])
+                             [self.titles[1]])
             self.assertEqual({m.title for m in self.db.get_unwatched_movies()},
                              {"modern", "last"})
             with closing(sqlite3.connect(self.db.database_path)) as connection:
@@ -186,8 +209,8 @@ class RecommendWorkflowTests(unittest.TestCase):
         self.assertEqual(snapshots[0], snapshots[1])
         code, output, _ = self.run_cli(["recommend"])
         self.assertEqual(code, 0)
-        self.assertNotIn("Boundary", output)
-        self.assertNotIn("Outside", output)
+        self.assertNotIn("boundary", output)
+        self.assertNotIn("outside", output)
 
 
 if __name__ == "__main__":

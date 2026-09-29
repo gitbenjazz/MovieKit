@@ -101,7 +101,8 @@ def _print_bulk_sync_counts(result) -> None:
 def recommend(_args: Optional[argparse.Namespace] = None) -> int:
     """Print the top 10 recommended unwatched movies."""
     from .application import RecommendTopMovies
-    from .recommendation_service import InvalidYearRange
+    from .recommendation_service import InvalidYearRange, RecommendationAccountError
+    from .tmdb_client import TMDbAPIError
 
     try:
         prime_movies = RecommendTopMovies().execute(
@@ -109,15 +110,26 @@ def recommend(_args: Optional[argparse.Namespace] = None) -> int:
             verbose=True,
             from_year=getattr(_args, "from_year", None),
             to_year=getattr(_args, "to_year", None),
+            username=getattr(_args, "username", None),
         )
-    except InvalidYearRange as exc:
+    except (InvalidYearRange, RecommendationAccountError) as exc:
         print(f"moviekit recommend: error: {exc}", file=sys.stderr)
         return 2
 
+    except (TMDbAPIError, sqlite3.Error, OSError) as exc:
+        print(f"moviekit recommend: {exc}", file=sys.stderr)
+        return 1
+
     print("\n========== TOP 10 ==========\n")
 
-    for movie in prime_movies:
-        print(movie)
+    if not prime_movies:
+        print("No eligible Prime Video US recommendations found.")
+    for recommendation in prime_movies:
+        movie = recommendation.movie
+        print(f"{movie.title} ({movie.year}) | Score: {recommendation.score:.2f}")
+        print(f"  {recommendation.provider}")
+        for reason in recommendation.reasons:
+            print(f"  - {reason}")
 
     return 0
 
@@ -521,6 +533,7 @@ def build_parser() -> argparse.ArgumentParser:
     recommend_parser.add_argument(
         "--to-year", type=int, help="Include movies released in this year or earlier"
     )
+    recommend_parser.add_argument("--username", help="Personal account (automatic when only one exists)")
     recommend_parser.set_defaults(func=recommend)
 
     tonight_parser = subparsers.add_parser("tonight")
