@@ -206,12 +206,14 @@ class SearchCommandTests(unittest.TestCase):
             with redirect_stdout(output):
                 exit_code = cli.sync_metadata(cli.argparse.Namespace())
 
-        self.assertEqual(exit_code, 0)
-        bulk_sync_service.return_value.sync_metadata.assert_called_once_with()
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(bulk_sync_service.return_value.sync_metadata.call_args.kwargs["limit"], None)
+        self.assertTrue(callable(bulk_sync_service.return_value.sync_metadata.call_args.kwargs["progress"]))
         self.assertEqual(
             output.getvalue(),
             "\n".join(
                 [
+                    "Canonical metadata synchronization started (saved films are skipped).",
                     "Metadata synchronization completed",
                     "",
                     "Processed: 1524",

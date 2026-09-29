@@ -72,6 +72,16 @@ class DatabaseRepository:
         self.database_path = Path(database_path)
         initialize_database(self.database_path)
 
+    def enriched_metadata_ids(self) -> set[int]:
+        """Canonical films already usable for genre/director recommendation ranking."""
+        with closing(self._read_connection()) as connection:
+            return {row[0] for row in connection.execute(
+                """SELECT id FROM movies WHERE tmdb_id IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM movie_genres g WHERE g.movie_id = movies.id)
+                   AND EXISTS (SELECT 1 FROM movie_credits c WHERE c.movie_id = movies.id
+                               AND lower(c.role) = 'director')"""
+            )}
+
     def save_movies(self, movies: Iterable[MovieRecord]) -> None:
         with closing(sqlite3.connect(self.database_path)) as connection:
             connection.execute("PRAGMA foreign_keys = ON")

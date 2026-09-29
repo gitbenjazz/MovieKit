@@ -46,11 +46,23 @@ def sync_metadata(_args: Optional[argparse.Namespace] = None) -> int:
     """Synchronize TMDb metadata for all local movies."""
     from .application import SyncMetadata
 
-    result = SyncMetadata().execute()
+    print("Canonical metadata synchronization started (saved films are skipped).", flush=True)
+
+    def progress(movie, status, processed):
+        print(f"[{processed}] {movie.title} ({movie.year}): {status}", flush=True)
+
+    try:
+        result = SyncMetadata().execute(limit=getattr(_args, "limit", None), progress=progress)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        print(f"Metadata synchronization failed: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("Interrupted; completed films are saved. Rerun to resume.", flush=True)
+        return 130
 
     _print_bulk_sync_summary("Metadata synchronization completed", result)
 
-    return 0
+    return 1 if result.failed else 0
 
 
 def sync_availability(_args: Optional[argparse.Namespace] = None) -> int:
@@ -538,6 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
 
     sync_metadata_parser = sync_subparsers.add_parser("metadata")
+    sync_metadata_parser.add_argument("--limit", type=int, help="Maximum pending films to attempt in this batch")
     sync_metadata_parser.set_defaults(func=sync_metadata)
 
     sync_availability_parser = sync_subparsers.add_parser("availability")

@@ -110,8 +110,8 @@ class SyncMetadata:
         self._search_service = search_service
         self._metadata_service = metadata_service
 
-    def execute(self):
-        return self._bulk().sync_metadata()
+    def execute(self, **options):
+        return self._bulk().sync_metadata(**options)
 
     def execute_movie(self, title: str) -> SingleMovieMetadataResult:
         repository = self._single_movie_repository()

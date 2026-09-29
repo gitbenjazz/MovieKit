@@ -36,47 +36,48 @@ class MetadataSyncService:
         movie_id = getattr(movie, "id", None)
         movie_year = getattr(movie, "year", None)
 
-        if movie_year is None:
-            return MetadataSyncResult(
-                movie_title=movie_title,
-                movie_id=movie_id,
-                success=False,
-                updated=False,
-                error_message="Movie year is required to resolve TMDb metadata",
+        tmdb_id = getattr(movie, "tmdb_id", None)
+        if tmdb_id is None:
+            if movie_year is None:
+                return MetadataSyncResult(
+                    movie_title=movie_title,
+                    movie_id=movie_id,
+                    success=False,
+                    updated=False,
+                    error_message="Movie year is required to resolve TMDb metadata",
+                )
+
+            search_response = self.client.get_json(
+                "search/movie",
+                params={
+                    "query": movie_title,
+                    "year": movie_year,
+                },
+            )
+            candidates = self._matching_candidates(
+                search_response.get("results", []),
+                movie_title,
+                movie_year,
             )
 
-        search_response = self.client.get_json(
-            "search/movie",
-            params={
-                "query": movie_title,
-                "year": movie_year,
-            },
-        )
-        candidates = self._matching_candidates(
-            search_response.get("results", []),
-            movie_title,
-            movie_year,
-        )
+            if not candidates:
+                return MetadataSyncResult(
+                    movie_title=movie_title,
+                    movie_id=movie_id,
+                    success=False,
+                    updated=False,
+                    error_message="No TMDb match found",
+                )
+            if len(candidates) > 1:
+                return MetadataSyncResult(
+                    movie_title=movie_title,
+                    movie_id=movie_id,
+                    success=False,
+                    updated=False,
+                    error_message="Multiple TMDb matches found",
+                )
 
-        if not candidates:
-            return MetadataSyncResult(
-                movie_title=movie_title,
-                movie_id=movie_id,
-                success=False,
-                updated=False,
-                error_message="No TMDb match found",
-            )
-        if len(candidates) > 1:
-            return MetadataSyncResult(
-                movie_title=movie_title,
-                movie_id=movie_id,
-                success=False,
-                updated=False,
-                error_message="Multiple TMDb matches found",
-            )
-
-        candidate = candidates[0]
-        tmdb_id = candidate["id"]
+            tmdb_id = candidates[0]["id"]
         details = self.client.get_json(
             f"movie/{tmdb_id}",
             params={"append_to_response": "credits"},

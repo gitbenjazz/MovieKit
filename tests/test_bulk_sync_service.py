@@ -214,6 +214,9 @@ class FakeRepository:
     def get_all_movies(self) -> list[MovieSyncTarget]:
         return self.movies
 
+    def enriched_metadata_ids(self):
+        return set()
+
 
 @dataclass
 class FakeMetadataService:
