@@ -334,3 +334,15 @@ class GetPersonalStats:
 
     def execute(self, username):
         return self.service.stats(username)
+
+
+class EnrichPersonalMetadata:
+    def __init__(self, service=None):
+        if service is None:
+            from ..personal_metadata_service import PersonalMetadataService
+
+            service = PersonalMetadataService()
+        self.service = service
+
+    def execute(self, username, **options):
+        return self.service.enrich(username, **options)

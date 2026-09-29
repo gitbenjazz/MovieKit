@@ -392,6 +392,26 @@ def init_database(_args: Optional[argparse.Namespace] = None) -> int:
     return 0
 
 
+def personal_enrich(args: argparse.Namespace) -> int:
+    from .application import EnrichPersonalMetadata
+
+    def progress(movie, status, result):
+        print(f"[{result.processed}] {movie.title} ({movie.year}): {status}", flush=True)
+
+    try:
+        result = EnrichPersonalMetadata().execute(
+            args.username, limit=args.limit, retry_unresolved=args.retry_unresolved,
+            refresh=args.refresh, progress=progress,
+        )
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        print(f"Personal metadata enrichment failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Personal metadata: total={result.total}, processed={result.processed}, "
+          f"enriched={result.enriched}, cached={result.skipped}, "
+          f"unresolved={result.unresolved}, failed={result.failed}, remaining={result.remaining}")
+    return 1 if result.failed or result.unresolved else 0
+
+
 def personal_sync(args: argparse.Namespace) -> int:
     from .application import SyncPersonalLibrary
 
@@ -579,6 +599,13 @@ def build_parser() -> argparse.ArgumentParser:
     personal_sync_parser.add_argument("--source", required=True, help="Directory containing exported CSV files")
     personal_sync_parser.add_argument("--username", required=True, help="Letterboxd account username")
     personal_sync_parser.set_defaults(func=personal_sync)
+
+    enrich_parser = personal_commands.add_parser("enrich", help="Resume personal TMDb metadata enrichment")
+    enrich_parser.add_argument("--username", required=True)
+    enrich_parser.add_argument("--limit", type=int, help="Maximum films to process in this batch")
+    enrich_parser.add_argument("--retry-unresolved", action="store_true", help="Retry cached unmatched/ambiguous films")
+    enrich_parser.add_argument("--refresh", action="store_true", help="Refetch completed metadata as well")
+    enrich_parser.set_defaults(func=personal_enrich)
     personal_status_parser = personal_commands.add_parser("status", help="Show local account totals")
     personal_status_parser.add_argument("--username", required=True)
     personal_status_parser.set_defaults(func=personal_status)

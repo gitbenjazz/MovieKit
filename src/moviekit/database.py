@@ -17,7 +17,7 @@ REQUIRED_COLUMNS = {
 
 SCHEMA = """
 pragma foreign_keys = on;
-pragma user_version = 3;
+pragma user_version = 4;
 
 create table if not exists movies (
     id integer primary key,
@@ -137,6 +137,17 @@ create table if not exists personal_movies (
     unique (account_id, letterboxd_uri),
     foreign key (account_id) references accounts(id) on delete cascade,
     foreign key (canonical_movie_id) references movies(id) on delete set null
+);
+
+create table if not exists personal_movie_metadata (
+    personal_movie_id integer primary key references personal_movies(id) on delete cascade,
+    source_title text not null,
+    source_year integer,
+    status text not null check (status in ('pending', 'complete', 'unmatched', 'ambiguous', 'missing_year')),
+    tmdb_id integer,
+    genres_json text not null default '[]',
+    directors_json text not null default '[]',
+    fetched_at text not null default (datetime('now'))
 );
 
 create table if not exists watch_events (

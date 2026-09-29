@@ -27,7 +27,7 @@ PERSONAL_TABLES = {
 
 
 class DatabaseSchemaTests(unittest.TestCase):
-    def test_fresh_database_creates_schema_v3(self) -> None:
+    def test_fresh_database_creates_schema_v4(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "movies.db"
 
@@ -37,7 +37,7 @@ class DatabaseSchemaTests(unittest.TestCase):
                 tables = self._tables(connection)
                 user_version = self._user_version(connection)
 
-        self.assertEqual(user_version, 3)
+        self.assertEqual(user_version, 4)
         self.assertTrue(PERSONAL_TABLES.issubset(tables))
 
     def test_schema_v3_personal_tables_have_expected_columns(self) -> None:
@@ -130,7 +130,7 @@ class DatabaseSchemaTests(unittest.TestCase):
                 user_version = self._user_version(connection)
                 tables = self._tables(connection)
 
-        self.assertEqual(user_version, 3)
+        self.assertEqual(user_version, 4)
         self.assertEqual(before_movies, after_movies)
         self.assertEqual(before_watched, after_watched)
         self.assertTrue(PERSONAL_TABLES.issubset(tables))

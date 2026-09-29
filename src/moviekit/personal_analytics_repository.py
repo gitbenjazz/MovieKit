@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import closing
 from pathlib import Path
 import sqlite3
+import json
 
 from .personal_analytics_models import AnalyticsMovie, AnalyticsSnapshot, AnalyticsWatch
 
@@ -60,6 +61,25 @@ class PersonalAnalyticsRepository:
                    WHERE p.account_id = ? AND lower(mc.role) = 'director'
                    AND trim(people.name) != '' ORDER BY p.id, people.name""", (account_id,),
             ).fetchall()
+            # Older databases remain readable until the next explicit initialization.
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                                  "AND name='personal_movie_metadata'").fetchone():
+                metadata = connection.execute(
+                    """SELECT p.id, m.genres_json, m.directors_json
+                       FROM personal_movies p JOIN personal_movie_metadata m
+                         ON m.personal_movie_id = p.id
+                       WHERE p.account_id = ? AND m.status = 'complete'
+                         AND m.source_title = p.title AND m.source_year IS p.year""",
+                    (account_id,),
+                ).fetchall()
+                # A completed personal fetch owns both dimensions, including empty
+                # lists. Canonical metadata is the fallback for unenriched films.
+                enriched_ids = {r[0] for r in metadata}
+                genres = [(r[0], r[1]) for r in genres if r[0] not in enriched_ids]
+                directors = [(r[0], r[1]) for r in directors if r[0] not in enriched_ids]
+                for row in metadata:
+                    genres.extend((row[0], name) for name in json.loads(row[1]))
+                    directors.extend((row[0], name) for name in json.loads(row[2]))
             total = connection.execute("SELECT count(*) FROM movies").fetchone()[0]
         return AnalyticsSnapshot(
             account["username"],

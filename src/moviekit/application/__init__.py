@@ -1,4 +1,5 @@
 from .use_cases import (
+    EnrichPersonalMetadata,
     GetPersonalStats,
     GetPersonalLibraryStatus,
     SyncPersonalLibrary,
@@ -15,6 +16,7 @@ from .use_cases import (
 )
 
 __all__ = [
+    "EnrichPersonalMetadata",
     "GetPersonalStats",
     "GetPersonalLibraryStatus",
     "SyncPersonalLibrary",
