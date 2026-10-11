@@ -11,6 +11,11 @@ from .recommendation_engine import RecommendationEngine
 from .tmdb_client import TMDbClient, load_tmdb_api_key
 
 
+# TMDb's US provider catalog: base Prime plans, excluding Amazon Video (10),
+# free-with-ads (613), and all separately subscribed Amazon Channels.
+PRIME_US_PROVIDER_IDS = frozenset({9, 2100})
+
+
 class InvalidYearRange(ValueError):
     """The requested recommendation year interval is invalid."""
 
@@ -27,9 +32,15 @@ def search_movie(title, year, api_key):
 
 def has_prime(movie_id, api_key):
     data = TMDbClient(api_key=api_key).get_json(f"movie/{movie_id}/watch/providers")
-    providers = data.get("results", {}).get("US", {}).get("flatrate", [])
-    return any(p.get("provider_name") in {"Amazon Prime Video", "Amazon Prime Video with Ads"}
-               for p in providers)
+    if "id" in data and data["id"] != movie_id:
+        return False
+    regions = data.get("results")
+    us = regions.get("US") if isinstance(regions, dict) else None
+    providers = us.get("flatrate") if isinstance(us, dict) else None
+    if not isinstance(providers, list):
+        return False
+    return any(isinstance(p, dict) and type(p.get("provider_id")) is int
+               and p["provider_id"] in PRIME_US_PROVIDER_IDS for p in providers)
 
 
 def recommend_unwatched_movies(limit=10, repository=None, api_key=None, verbose=True,
@@ -77,7 +88,9 @@ def recommend_unwatched_movies(limit=10, repository=None, api_key=None, verbose=
         if movie_id is None:
             continue
         if has_prime(movie_id, api_key):
-            results.append(replace(recommendation, provider="Amazon Prime Video US (subscription)"))
+            results.append(replace(recommendation, provider=(
+                "Amazon Prime Video US (subscription) — reported by TMDb/JustWatch; "
+                "confirm on Prime Video")))
             if len(results) == limit:
                 break
         time.sleep(0.2)

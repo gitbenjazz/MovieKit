@@ -136,13 +136,56 @@ class RankedRecommendationIntegrationTests(unittest.TestCase):
 
 
 class PrimeFilterTests(unittest.TestCase):
+    def test_provider_id_is_authoritative_not_display_name(self):
+        for provider_id, expected in [(9, True), (2100, True), (10, False),
+                                      (613, False), (583, False), (582, False),
+                                      (None, False), ('9', False)]:
+            with self.subTest(provider_id=provider_id), patch('moviekit.recommendation_service.TMDbClient') as client:
+                client.return_value.get_json.return_value = {
+                    'id': 1, 'results': {'US': {'flatrate': [
+                        {'provider_id': provider_id, 'provider_name': 'Amazon Prime Video'}]}}}
+                self.assertEqual(has_prime(1, 'test'), expected)
+        with patch('moviekit.recommendation_service.TMDbClient') as client:
+            client.return_value.get_json.return_value = {
+                'results': {'US': {'flatrate': [{'provider_id': 9, 'provider_name': 'Renamed'}]}}}
+            self.assertTrue(has_prime(1, 'test'))
+
+    def test_rent_buy_free_ads_and_other_regions_do_not_qualify(self):
+        prime = {'provider_id': 9, 'provider_name': 'Amazon Prime Video'}
+        for category in ('rent', 'buy', 'free', 'ads'):
+            with self.subTest(category=category), patch('moviekit.recommendation_service.TMDbClient') as client:
+                client.return_value.get_json.return_value = {
+                    'results': {'US': {category: [prime]}, 'GB': {'flatrate': [prime]}}}
+                self.assertFalse(has_prime(1, 'test'))
+
+    def test_malformed_or_wrong_movie_availability_never_qualifies(self):
+        payloads = [{'results': None}, {'results': {'US': None}},
+                    {'results': {'US': {'flatrate': {}}}},
+                    {'results': {'US': {'flatrate': [None, 'Amazon Prime Video', {}]}}},
+                    {'id': 2, 'results': {'US': {'flatrate': [{'provider_id': 9}]}}}]
+        for payload in payloads:
+            with self.subTest(payload=payload), patch('moviekit.recommendation_service.TMDbClient') as client:
+                client.return_value.get_json.return_value = payload
+                self.assertFalse(has_prime(1, 'test'))
+
+    def test_availability_is_refetched_and_removed_subscription_is_not_cached(self):
+        with patch('moviekit.recommendation_service.TMDbClient') as client:
+            client.return_value.get_json.side_effect = [
+                {'results': {'US': {'flatrate': [{'provider_id': 9}]}}},
+                {'results': {'US': {'rent': [{'provider_id': 10}]}}},
+            ]
+            self.assertTrue(has_prime(1, 'test'))
+            self.assertFalse(has_prime(1, 'test'))
+            self.assertEqual(client.return_value.get_json.call_count, 2)
+            client.return_value.get_json.assert_called_with('movie/1/watch/providers')
+
     def test_only_us_prime_subscription_is_accepted(self):
         cases = [
-            ({"US": {"flatrate": [{"provider_name": "Amazon Prime Video"}]}}, True),
-            ({"US": {"flatrate": [{"provider_name": "Amazon Prime Video with Ads"}]}}, True),
-            ({"US": {"rent": [{"provider_name": "Amazon Prime Video"}]}}, False),
+            ({"US": {"flatrate": [{"provider_id": 9, "provider_name": "Amazon Prime Video"}]}}, True),
+            ({"US": {"flatrate": [{"provider_id": 2100, "provider_name": "Amazon Prime Video with Ads"}]}}, True),
+            ({"US": {"rent": [{"provider_id": 9, "provider_name": "Amazon Prime Video"}]}}, False),
             ({"US": {"flatrate": [{"provider_name": "MGM+ Amazon Channel"}]}}, False),
-            ({"FR": {"flatrate": [{"provider_name": "Amazon Prime Video"}]}}, False),
+            ({"FR": {"flatrate": [{"provider_id": 9, "provider_name": "Amazon Prime Video"}]}}, False),
         ]
         for data, expected in cases:
             with self.subTest(data=data), patch("moviekit.recommendation_service.TMDbClient") as client:
