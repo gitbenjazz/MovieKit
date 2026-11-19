@@ -67,12 +67,12 @@ If the console script is not installed on your shell path, use the repository vi
 
 MovieKit reads local exports; it does not connect to your Letterboxd account.
 Export and unzip your latest Letterboxd data, then replace the project's
-`watched.csv` and run `sync` **before** requesting recommendations. For the
-export currently kept in Documents, the exact commands are:
+`watched.csv` and run `sync` **before** requesting recommendations. For a
+local export, use:
 
 ```bash
-cd /Users/hatimbenmeziane/letterboxd-1001
-cp /Users/hatimbenmeziane/Documents/letterboxd-1001/watched.csv ./watched.csv
+cd /path/to/moviekit
+cp /path/to/letterboxd-export/watched.csv ./watched.csv
 .venv/bin/moviekit sync
 .venv/bin/moviekit recommend
 ```
@@ -84,9 +84,9 @@ accumulate watched entries. Separate viewing-history rows already present in
 the source remain separate. Films outside `movies.csv` are skipped, never added
 to the canonical collection by the watched import.
 
-`sync` refreshes both SQLite (used by `search` and `tonight`) and
-`unwatched1001.csv` (used by `recommend`). Merely replacing `watched.csv` is not
-enough. No Sprint 6 personal-library synchronization is required.
+`sync` refreshes SQLite (used by `search`, `tonight`, and `recommend`) and the
+CSV reports. Merely replacing `watched.csv` is not enough. Personal Library
+synchronization is optional, but supplies the personalized ranking evidence.
 
 Optional, inclusive release-year filters:
 
@@ -97,9 +97,9 @@ Optional, inclusive release-year filters:
 ```
 
 Filtering happens before TMDb lookups and selection of up to ten results.
-An inverted range exits with status 2; omitting both options preserves the
-existing behavior. Recommendations still use CSV order and Prime Video US
-subscription availability reported by TMDb, not a personalized ranking.
+An inverted range exits with status 2; omitting both options leaves years unrestricted.
+Recommendations rank unwatched canonical movies using imported personal preferences,
+and require Prime Video US subscription availability reported by TMDb.
 They require network access and `TMDB_API_KEY`. CSV watched matching still
 uses title and year, so differently named titles can require correction.
 
@@ -109,14 +109,14 @@ Download and extract the official Letterboxd account export. Supply the director
 containing its CSV files and your Letterboxd username:
 
 ```bash
-.venv/bin/moviekit personal sync --source "/path/to/extracted-letterboxd-export" --username themonkous
-.venv/bin/moviekit personal status --username themonkous
+.venv/bin/moviekit personal sync --source "/path/to/extracted-letterboxd-export" --username your-letterboxd-username
+.venv/bin/moviekit personal status --username your-letterboxd-username
 ```
 
-If that export is in the existing Documents folder:
+For example, if the export has been extracted in a local data folder:
 
 ```bash
-.venv/bin/moviekit personal sync --source "/Users/hatimbenmeziane/Documents/letterboxd-1001" --username themonkous
+.venv/bin/moviekit personal sync --source "/path/to/extracted-letterboxd-export" --username your-letterboxd-username
 ```
 
 Supported files: `watched.csv`, `ratings.csv`, `diary.csv`, `reviews.csv`, and
@@ -131,15 +131,17 @@ partial success with skipped rows, and 2 for invalid command syntax. On partial
 success, valid rows are committed and the errors identify the source file and row.
 
 Re-imports are idempotent. Partial exports do not delete absent personal data.
-Personal synchronization does **not** refresh the Phase 1 recommendation history;
-continue using the `watched.csv` + `moviekit sync` workflow above for that.
+Personal synchronization does **not** refresh the Phase 1 watched table.
+`recommend` excludes both Phase 1 watched movies and canonical movies watched by
+the selected personal account. Continue using `watched.csv` + `moviekit sync`
+to refresh the shared Phase 1 history used by other commands.
 See [Personal Library synchronization](docs/PERSONAL_LIBRARY_SYNC.md) for identity,
 watch-event reconciliation, transaction guarantees, and current limitations.
 
 ## Personal Analytics (Sprint 7)
 
 ```bash
-.venv/bin/moviekit personal stats --username themonkous
+.venv/bin/moviekit personal stats --username your-letterboxd-username
 ```
 
 This command reads the local Personal Library without network calls or database
@@ -180,3 +182,21 @@ git diff --check
 ```
 
 See [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for schema, repository, and testing notes.
+
+## Personalized recommendations
+
+```bash
+.venv/bin/moviekit personal sync --username your-letterboxd-username --source /path/to/extracted-letterboxd-export
+.venv/bin/moviekit recommend --username your-letterboxd-username
+.venv/bin/moviekit recommend --username your-letterboxd-username --from-year 1970 --to-year 1999
+```
+
+A single imported account is selected automatically; multiple accounts require
+`--username`. With no account, scores are neutral. Results expose the score and
+personal evidence behind it. Ratings relative to your average, likes, rewatches,
+and weaker watch signals contribute to director, genre, and decade affinities.
+Missing genre/director metadata leaves only an explicitly labeled era signal;
+films with equal scores sort by title, year, and canonical ID.
+
+See [ranking details and limitations](docs/RECOMMENDATIONS.md). The separate
+`tonight` command retains its existing behavior.

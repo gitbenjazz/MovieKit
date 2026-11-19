@@ -33,17 +33,15 @@ Metadata and availability synchronization are enrichment steps only.
 
 This applies to both single-movie and bulk synchronization commands.
 
-## Future Phase: Personal Library
+## Personal Library
 
-A future Letterboxd synchronization milestone may intentionally expand MovieKit beyond the canonical 1001 list.
+The Personal Library is additive and remains separate from Phase 1. Its
+Letterboxd imports write account-scoped rows to `accounts`, `personal_movies`,
+`watch_events`, `ratings`, `reviews`, and `likes`. Personal films outside the
+canonical collection are never inserted into `movies`.
 
-That future personal-library phase may import:
-
-- Watched movies outside the 1001 list.
-- Ratings.
-- Reviews.
-- Diary entries.
-- Favorites and likes.
-- Additional metadata.
-
-This is a future architectural milestone and is not part of Phase 1.
+Optional TMDb-backed universal identities and normalized credits are linked to
+canonical, personal, or editorial rows through additive foreign keys. A failed
+or ambiguous identity is retained for audit and never silently merged. Personal
+analytics and personalized recommendations use these links where available;
+missing metadata does not invent a match or alter the canonical collection.

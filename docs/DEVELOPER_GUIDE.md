@@ -12,6 +12,8 @@ This guide captures the conventions used by the MovieKit codebase.
 - `src/moviekit/personal_analytics_repository.py`: read-only, account-scoped analytics snapshots.
 - `src/moviekit/personal_analytics_service.py`: analytics calculations and preference ordering.
 - `src/moviekit/personal_analytics_models.py`: typed analytics input/output records.
+- `src/moviekit/collection_analytics_repository.py`: read-only collection-progress queries.
+- `src/moviekit/universal_identity_repository.py`: verified TMDb identities and normalized noncanonical credits.
 - `src/moviekit/metadata_service.py`: single-movie TMDb metadata synchronization.
 - `src/moviekit/movie_repository.py`: CSV loading and CSV-derived record creation.
 - `src/moviekit/provider_backend.py`: provider availability backend interface.
@@ -26,19 +28,34 @@ This guide captures the conventions used by the MovieKit codebase.
 ## Layering Rules
 
 - Keep SQL inside repository modules unless the schema itself is being edited.
-- Personal analytics uses a read-only SQLite connection and one read transaction for a consistent snapshot.
+- The Personal Library analytics snapshot uses a read-only SQLite connection and one read transaction; collection progress is a separate read-only query.
+- The analytics report service builds presentation-neutral typed results; CLI commands only format them.
+- Analytics must not infer personal ratings from public metadata or modify Personal Library/canonical rows.
 - Keep CLI functions thin: parse arguments, call services, print results.
 - Put workflow logic in service classes.
 - Keep public CLI and service behavior stable unless a feature explicitly requires a change.
 
 ## SQLite Schema
 
-Schema v2 keeps `movies` as the central table.
+Schema v9 keeps `movies` as the canonical collection and adds an optional
+identity layer for personal and editorial films.
 
 - `movies.letterboxd_url` is the movie business key.
 - In Phase 1, `movies` contains only the canonical library imported from `movies.csv`; a clean rebuild should contain exactly 1524 movies.
 - `watched.movie_id` points to `movies.id`.
 - Genres, credits, source lists, providers, countries, and availability are normalized into their own tables.
+- `film_identities` is keyed by verified TMDb ID; `identity_people` and
+  `identity_credits` keep TMDb-person-backed director/actor credits separate
+  from legacy canonical name credits.
+- `personal_movie_metadata.identity_id`, `movies.identity_id`, and
+  `collection_entries.identity_id` are optional, additive links.  They never
+  cause a personal-only row to be inserted into `movies`.
+- `personal_movie_metadata.status` records resolution state; its
+  `metadata_status` independently records whether a universal TMDb detail
+  response has been fetched. `refresh_order` makes bounded refresh batches
+  progress without repeating the same first page.
+- Failed metadata fetches retain a category, diagnostic, timestamp, and count;
+  normal batches skip them and explicit retry is required.
 - `initialize_database()` enables `PRAGMA foreign_keys = ON`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the Phase 1 database scope and the future personal-library boundary.

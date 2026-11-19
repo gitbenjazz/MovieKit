@@ -3,7 +3,8 @@
 Personal synchronization is additive and independent from Phase 1. It writes
 `accounts`, `personal_movies`, `watch_events`, `ratings`, `reviews`, `likes`, and
 `sync_runs`. It never imports personal films into canonical `movies`, modifies
-Phase 1 `watched`, or changes recommendation behavior.
+Phase 1 `watched`. Personalized recommendations read personal watches and
+preferences directly in addition to the Phase 1 watched exclusions.
 
 ## Input and ownership
 
