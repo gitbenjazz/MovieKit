@@ -25,9 +25,12 @@ PERSONAL_TABLES = {
     "sync_runs",
 }
 
+COLLECTION_TABLES = {"collections", "collection_entries"}
+IDENTITY_TABLES = {"film_identities", "identity_people", "identity_genres", "identity_credits"}
+
 
 class DatabaseSchemaTests(unittest.TestCase):
-    def test_fresh_database_creates_schema_v4(self) -> None:
+    def test_fresh_database_creates_schema_v9(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "movies.db"
 
@@ -37,10 +40,12 @@ class DatabaseSchemaTests(unittest.TestCase):
                 tables = self._tables(connection)
                 user_version = self._user_version(connection)
 
-        self.assertEqual(user_version, 4)
+        self.assertEqual(user_version, 9)
         self.assertTrue(PERSONAL_TABLES.issubset(tables))
+        self.assertTrue(COLLECTION_TABLES.issubset(tables))
+        self.assertTrue(IDENTITY_TABLES.issubset(tables))
 
-    def test_schema_v3_personal_tables_have_expected_columns(self) -> None:
+    def test_schema_v9_personal_tables_have_expected_columns(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "movies.db"
             initialize_database(database_path)
@@ -74,6 +79,15 @@ class DatabaseSchemaTests(unittest.TestCase):
                 )
                 self.assertNotIn("rating", personal_movie_columns)
                 self.assertNotIn("liked", personal_movie_columns)
+                self.assertIn("identity_id", self._columns(connection, "movies"))
+                self.assertIn("identity_id", self._columns(connection, "personal_movie_metadata"))
+                self.assertIn("metadata_status", self._columns(connection, "personal_movie_metadata"))
+                self.assertIn("refresh_order", self._columns(connection, "personal_movie_metadata"))
+                self.assertIn("identity_id", self._columns(connection, "collection_entries"))
+                self.assertTrue({"id", "tmdb_id", "original_title", "release_year", "metadata_fetched_at"}
+                                .issubset(self._columns(connection, "film_identities")))
+                self.assertTrue({"identity_id", "person_id", "role", "billing_order"}
+                                .issubset(self._columns(connection, "identity_credits")))
                 self.assertTrue(
                     {
                         "id",
@@ -88,7 +102,7 @@ class DatabaseSchemaTests(unittest.TestCase):
                     }.issubset(self._columns(connection, "watch_events"))
                 )
 
-    def test_schema_v3_required_indexes_exist(self) -> None:
+    def test_schema_v9_required_indexes_exist(self) -> None:
         expected_indexes = {
             "idx_personal_movies_account_id",
             "idx_personal_movies_canonical_movie_id",
@@ -113,7 +127,7 @@ class DatabaseSchemaTests(unittest.TestCase):
 
         self.assertTrue(expected_indexes.issubset(indexes))
 
-    def test_migrates_schema_v2_database_to_schema_v3_without_changing_movies(
+    def test_migrates_schema_v2_database_to_schema_v9_without_changing_movies(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -130,12 +144,12 @@ class DatabaseSchemaTests(unittest.TestCase):
                 user_version = self._user_version(connection)
                 tables = self._tables(connection)
 
-        self.assertEqual(user_version, 4)
+        self.assertEqual(user_version, 9)
         self.assertEqual(before_movies, after_movies)
         self.assertEqual(before_watched, after_watched)
         self.assertTrue(PERSONAL_TABLES.issubset(tables))
 
-    def test_initialization_is_idempotent_for_schema_v3(self) -> None:
+    def test_initialization_is_idempotent_for_schema_v9(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "movies.db"
             initialize_database(database_path)

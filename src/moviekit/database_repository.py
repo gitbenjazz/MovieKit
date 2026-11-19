@@ -417,8 +417,22 @@ class DatabaseRepository:
 
         if row is None:
             raise sqlite3.IntegrityError("Movie upsert did not produce a row")
-
-        return int(row[0])
+        movie_id = int(row[0])
+        identity = connection.execute(
+            "SELECT tmdb_id, coalesce(tmdb_title, title), year FROM movies WHERE id = ?", (movie_id,)
+        ).fetchone()
+        if identity[0] is not None:
+            connection.execute(
+                "INSERT OR IGNORE INTO film_identities(tmdb_id, title, release_year) VALUES (?, ?, ?)",
+                identity,
+            )
+            connection.execute(
+                """UPDATE movies SET identity_id = (
+                       SELECT id FROM film_identities WHERE tmdb_id = movies.tmdb_id)
+                   WHERE id = ?""",
+                (movie_id,),
+            )
+        return movie_id
 
     @staticmethod
     def _replace_movie_genres(

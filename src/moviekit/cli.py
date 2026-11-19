@@ -462,14 +462,17 @@ def personal_enrich(args: argparse.Namespace) -> int:
     try:
         result = EnrichPersonalMetadata().execute(
             args.username, limit=args.limit, retry_unresolved=args.retry_unresolved,
-            refresh=args.refresh, progress=progress,
+            retry_failed=args.retry_failed, refresh=args.refresh, dry_run=args.dry_run, progress=progress,
         )
     except (ValueError, OSError, sqlite3.Error) as exc:
         print(f"Personal metadata enrichment failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Personal metadata: total={result.total}, processed={result.processed}, "
+    mode = "Dry-run personal metadata" if args.dry_run else "Personal metadata"
+    print(f"{mode}: total={result.total}, processed={result.processed}, "
           f"enriched={result.enriched}, cached={result.skipped}, "
-          f"unresolved={result.unresolved}, failed={result.failed}, remaining={result.remaining}")
+          f"cached_resolved={result.cached_resolved}, cached_unresolved={result.cached_unresolved}, "
+          f"cached_failed={result.cached_failed}, metadata_pending={result.metadata_pending}, unresolved={result.unresolved}, "
+          f"failed={result.failed}, remaining={result.remaining}")
     return 1 if result.failed or result.unresolved else 0
 
 
@@ -915,8 +918,16 @@ def build_parser() -> argparse.ArgumentParser:
     enrich_parser.add_argument("--username", required=True)
     enrich_parser.add_argument("--limit", type=int, help="Maximum films to process in this batch")
     enrich_parser.add_argument("--retry-unresolved", action="store_true", help="Retry cached unmatched/ambiguous films")
+    enrich_parser.add_argument("--retry-failed", action="store_true", help="Retry cached TMDb or metadata failures")
     enrich_parser.add_argument("--refresh", action="store_true", help="Refetch completed metadata as well")
+    enrich_parser.add_argument("--dry-run", action="store_true", help="Resolve/enrich without writing identity or metadata rows")
     enrich_parser.set_defaults(func=personal_enrich)
+    identities_parser = personal_commands.add_parser("identities", help="Show cached personal identity states")
+    identities_parser.add_argument("--username", required=True)
+    identities_parser.set_defaults(func=personal_identity_status)
+    unresolved_parser = personal_commands.add_parser("unresolved", help="List auditable unresolved personal identities")
+    unresolved_parser.add_argument("--username", required=True)
+    unresolved_parser.set_defaults(func=personal_unresolved)
     personal_status_parser = personal_commands.add_parser("status", help="Show local account totals")
     personal_status_parser.add_argument("--username", required=True)
     personal_status_parser.set_defaults(func=personal_status)
