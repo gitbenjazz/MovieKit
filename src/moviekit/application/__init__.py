@@ -1,5 +1,11 @@
 from .use_cases import (
+    Import2013Collection,
+    ListCollections,
+    ShowCollection,
     EnrichPersonalMetadata,
+    GetAnalyticsReport,
+    GetPersonalIdentityStatus,
+    ListUnresolvedPersonalIdentities,
     GetPersonalStats,
     GetPersonalLibraryStatus,
     SyncPersonalLibrary,
@@ -16,7 +22,13 @@ from .use_cases import (
 )
 
 __all__ = [
+    "Import2013Collection",
+    "ListCollections",
+    "ShowCollection",
     "EnrichPersonalMetadata",
+    "GetAnalyticsReport",
+    "GetPersonalIdentityStatus",
+    "ListUnresolvedPersonalIdentities",
     "GetPersonalStats",
     "GetPersonalLibraryStatus",
     "SyncPersonalLibrary",

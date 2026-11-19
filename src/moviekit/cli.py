@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sqlite3
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 
@@ -113,6 +116,7 @@ def _print_bulk_sync_counts(result) -> None:
 def recommend(_args: Optional[argparse.Namespace] = None) -> int:
     """Print the top 10 recommended unwatched movies."""
     from .application import RecommendTopMovies
+    from .collection_repository import CollectionNotFoundError
     from .recommendation_service import InvalidYearRange, RecommendationAccountError
     from .tmdb_client import TMDbAPIError
 
@@ -123,8 +127,9 @@ def recommend(_args: Optional[argparse.Namespace] = None) -> int:
             from_year=getattr(_args, "from_year", None),
             to_year=getattr(_args, "to_year", None),
             username=getattr(_args, "username", None),
+            collection=getattr(_args, "collection", None),
         )
-    except (InvalidYearRange, RecommendationAccountError) as exc:
+    except (InvalidYearRange, RecommendationAccountError, CollectionNotFoundError, ValueError) as exc:
         print(f"moviekit recommend: error: {exc}", file=sys.stderr)
         return 2
 
@@ -143,6 +148,50 @@ def recommend(_args: Optional[argparse.Namespace] = None) -> int:
         for reason in recommendation.reasons:
             print(f"  - {reason}")
 
+    return 0
+
+
+def collections_import(args: argparse.Namespace) -> int:
+    from .application import Import2013Collection
+
+    source = Path(args.source)
+    try:
+        result = Import2013Collection().execute(source)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        print(f"Collection import failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Collection imported: {result.slug}")
+    print(f"Editorial entries: {result.editorial_entries}")
+    print(f"Inserted: {result.inserted}; updated: {result.updated}")
+    print(f"Canonical links: {result.matched}; recommendable: {result.recommendable}")
+    print(f"Unresolved: {result.unresolved}; ambiguous: {result.ambiguous}; "
+          f"grouped: {result.grouped}; empty title: {result.empty_title}")
+    return 0
+
+
+def collections_list(_args: Optional[argparse.Namespace] = None) -> int:
+    from .application import ListCollections
+
+    for collection in ListCollections().execute():
+        print(f"{collection.slug}: {collection.name} ({collection.editorial_entries} entries, "
+              f"{collection.recommendable} recommendable)")
+    return 0
+
+
+def collections_show(args: argparse.Namespace) -> int:
+    from .application import ShowCollection
+    from .collection_repository import CollectionNotFoundError
+
+    try:
+        collection = ShowCollection().execute(args.slug)
+    except CollectionNotFoundError as exc:
+        print(f"moviekit collections: error: {exc}", file=sys.stderr)
+        return 2
+    print(f"{collection.slug}: {collection.name}")
+    print(f"Editorial entries: {collection.editorial_entries}")
+    print(f"Matched: {collection.matched}; recommendable: {collection.recommendable}")
+    print(f"Unresolved: {collection.unresolved}; ambiguous: {collection.ambiguous}; "
+          f"grouped: {collection.grouped}; empty title: {collection.empty_title}")
     return 0
 
 
@@ -567,7 +616,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--to-year", type=int, help="Include movies released in this year or earlier"
     )
     recommend_parser.add_argument("--username", help="Personal account (automatic when only one exists)")
+    recommend_parser.add_argument("--collection", choices=("letterboxd-1001", "1001-2013", "intersection", "all"),
+                                  help="Curated collection selector")
     recommend_parser.set_defaults(func=recommend)
+
+    collections_parser = subparsers.add_parser("collections", help="Import and inspect curated collections")
+    collections_commands = collections_parser.add_subparsers(dest="collections_command", required=True)
+    collections_list_parser = collections_commands.add_parser("list")
+    collections_list_parser.set_defaults(func=collections_list)
+    collections_show_parser = collections_commands.add_parser("show")
+    collections_show_parser.add_argument("slug")
+    collections_show_parser.set_defaults(func=collections_show)
+    collections_import_parser = collections_commands.add_parser("import")
+    collections_import_parser.add_argument("--source", required=True,
+                                           help="Validated collection CSV obtained by the user")
+    collections_import_parser.set_defaults(func=collections_import)
 
     tonight_parser = subparsers.add_parser("tonight")
     tonight_parser.set_defaults(func=tonight)

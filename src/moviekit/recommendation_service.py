@@ -4,6 +4,7 @@ from dataclasses import replace
 import time
 
 from .database_repository import DatabaseRepository
+from .collection_repository import CollectionRepository
 from .metadata_service import MetadataSyncService
 from .personal_analytics_repository import PersonalAnalyticsRepository
 from .personal_preferences import PersonalPreferenceProfile
@@ -44,7 +45,8 @@ def has_prime(movie_id, api_key):
 
 
 def recommend_unwatched_movies(limit=10, repository=None, api_key=None, verbose=True,
-                               from_year=None, to_year=None, username=None, analytics_repository=None):
+                               from_year=None, to_year=None, username=None, analytics_repository=None,
+                               collection=None, collection_repository=None):
     if from_year is not None and to_year is not None and from_year > to_year:
         raise InvalidYearRange("--from-year must be less than or equal to --to-year")
     if limit <= 0:
@@ -61,8 +63,14 @@ def recommend_unwatched_movies(limit=10, repository=None, api_key=None, verbose=
     elif usernames:
         username = usernames[0]
     profile = PersonalPreferenceProfile(analytics.snapshot(username) if username else None)
+    collection_ids = None
+    if collection is not None:
+        collections = collection_repository or CollectionRepository(repository.database_path)
+        collection_ids = collections.canonical_ids(collection)
     candidates = []
     for movie in repository.get_unwatched_movies():
+        if collection_ids is not None and movie.id not in collection_ids:
+            continue
         if movie.id in profile.watched_canonical_ids:
             continue
         if from_year is not None and (movie.year is None or movie.year < from_year):
@@ -98,8 +106,8 @@ def recommend_unwatched_movies(limit=10, repository=None, api_key=None, verbose=
 
 
 def top_recommended_unwatched_movies(limit=10, repository=None, api_key=None, verbose=True,
-                                    from_year=None, to_year=None, username=None):
+                                    from_year=None, to_year=None, username=None, collection=None):
     """Compatibility title-list helper; CLI uses the structured results above."""
     results = recommend_unwatched_movies(limit, repository, api_key, verbose,
-                                        from_year, to_year, username)
+                                        from_year, to_year, username, collection=collection)
     return [f"{r.movie.title} ({r.movie.year})" for r in results]

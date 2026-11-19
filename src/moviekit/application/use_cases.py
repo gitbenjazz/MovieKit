@@ -74,6 +74,7 @@ class RecommendTopMovies:
         from_year: int | None = None,
         to_year: int | None = None,
         username: str | None = None,
+        collection: str | None = None,
     ):
         return self.recommendation_function(
             limit=limit,
@@ -81,6 +82,7 @@ class RecommendTopMovies:
             from_year=from_year,
             to_year=to_year,
             username=username,
+            collection=collection,
         )
 
 
@@ -334,6 +336,71 @@ class GetPersonalStats:
 
     def execute(self, username):
         return self.service.stats(username)
+
+
+class GetAnalyticsReport:
+    def __init__(self, service=None):
+        if service is None:
+            from ..personal_analytics_service import PersonalAnalyticsService
+
+            service = PersonalAnalyticsService()
+        self.service = service
+
+    def execute(self, username):
+        return self.service.report(username)
+
+
+class GetPersonalIdentityStatus:
+    def __init__(self, repository=None):
+        if repository is None:
+            from ..universal_identity_repository import UniversalIdentityRepository
+
+            repository = UniversalIdentityRepository()
+        self.repository = repository
+
+    def execute(self, username):
+        return self.repository.status(username.strip().lower())
+
+
+class ListUnresolvedPersonalIdentities:
+    def __init__(self, repository=None):
+        if repository is None:
+            from ..universal_identity_repository import UniversalIdentityRepository
+
+            repository = UniversalIdentityRepository()
+        self.repository = repository
+
+    def execute(self, username):
+        return self.repository.unresolved(username.strip().lower())
+
+
+class Import2013Collection:
+    def __init__(self, service=None):
+        if service is None:
+            from ..collection_import_service import CollectionImportService
+
+            service = CollectionImportService()
+        self.service = service
+
+    def execute(self, source):
+        return self.service.import_2013(source)
+
+
+class ListCollections:
+    def __init__(self, repository=None):
+        if repository is None:
+            from ..collection_repository import CollectionRepository
+
+            repository = CollectionRepository()
+        self.repository = repository
+
+    def execute(self):
+        return self.repository.summaries()
+
+
+class ShowCollection(ListCollections):
+    def execute(self, slug):
+        return self.repository.summary(slug)
 
 
 class EnrichPersonalMetadata:

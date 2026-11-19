@@ -17,7 +17,7 @@ REQUIRED_COLUMNS = {
 
 SCHEMA = """
 pragma foreign_keys = on;
-pragma user_version = 4;
+pragma user_version = 9;
 
 create table if not exists movies (
     id integer primary key,
@@ -58,6 +58,43 @@ create table if not exists movie_genres (
     primary key (movie_id, genre_id),
     foreign key (movie_id) references movies(id) on delete cascade,
     foreign key (genre_id) references genres(id) on delete cascade
+);
+
+create table if not exists film_identities (
+    id integer primary key,
+    tmdb_id integer not null unique,
+    title text,
+    original_title text,
+    release_year integer,
+    metadata_fetched_at text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now'))
+);
+
+create table if not exists identity_people (
+    id integer primary key,
+    tmdb_person_id integer not null unique,
+    name text not null,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now'))
+);
+
+create table if not exists identity_genres (
+    identity_id integer not null,
+    genre_id integer not null,
+    primary key (identity_id, genre_id),
+    foreign key (identity_id) references film_identities(id) on delete cascade,
+    foreign key (genre_id) references genres(id) on delete cascade
+);
+
+create table if not exists identity_credits (
+    identity_id integer not null,
+    person_id integer not null,
+    role text not null,
+    billing_order integer,
+    primary key (identity_id, person_id, role),
+    foreign key (identity_id) references film_identities(id) on delete cascade,
+    foreign key (person_id) references identity_people(id) on delete cascade
 );
 
 create table if not exists watched (
@@ -147,6 +184,12 @@ create table if not exists personal_movie_metadata (
     tmdb_id integer,
     genres_json text not null default '[]',
     directors_json text not null default '[]',
+    metadata_status text not null default 'pending',
+    refresh_order integer not null default 0,
+    failure_category text,
+    failure_message text,
+    failure_count integer not null default 0,
+    last_failed_at text,
     fetched_at text not null default (datetime('now'))
 );
 
@@ -229,6 +272,39 @@ create table if not exists sync_runs (
     foreign key (account_id) references accounts(id) on delete set null
 );
 
+create table if not exists collections (
+    id integer primary key,
+    slug text not null unique,
+    name text not null,
+    edition_year integer,
+    source_url text,
+    description text,
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now'))
+);
+
+create table if not exists collection_entries (
+    id integer primary key,
+    collection_id integer not null,
+    editorial_entry_number integer not null,
+    source_title text not null,
+    source_year integer,
+    source_url text not null,
+    verification_status text not null,
+    review_reason text,
+    editorial_group text,
+    tmdb_id integer,
+    canonical_movie_id integer,
+    match_state text not null,
+    match_method text,
+    candidate_ids_json text not null default '[]',
+    created_at text not null default (datetime('now')),
+    updated_at text not null default (datetime('now')),
+    unique (collection_id, editorial_entry_number),
+    foreign key (collection_id) references collections(id) on delete cascade,
+    foreign key (canonical_movie_id) references movies(id) on delete set null
+);
+
 create index if not exists idx_movie_credits_person_id
     on movie_credits (person_id);
 
@@ -237,6 +313,15 @@ create index if not exists idx_movie_credits_role
 
 create index if not exists idx_movie_genres_genre_id
     on movie_genres (genre_id);
+
+create index if not exists idx_identity_genres_genre_id
+    on identity_genres (genre_id);
+
+create index if not exists idx_identity_credits_person_id
+    on identity_credits (person_id);
+
+create index if not exists idx_identity_credits_role
+    on identity_credits (role);
 
 create index if not exists idx_watched_movie_id
     on watched (movie_id);
@@ -285,6 +370,12 @@ create index if not exists idx_sync_runs_account_started
 
 create index if not exists idx_sync_runs_source_type
     on sync_runs (source, sync_type);
+
+create index if not exists idx_collection_entries_collection
+    on collection_entries (collection_id, editorial_entry_number);
+
+create index if not exists idx_collection_entries_canonical
+    on collection_entries (canonical_movie_id);
 """
 
 
@@ -297,6 +388,7 @@ def initialize_database(path: DatabasePath = DEFAULT_DATABASE_PATH) -> Path:
             connection.execute("PRAGMA foreign_keys = ON")
             _drop_incompatible_tables(connection)
             connection.executescript(SCHEMA)
+            _upgrade_schema(connection)
 
     return database_path
 
@@ -313,6 +405,73 @@ def _drop_incompatible_tables(connection: sqlite3.Connection) -> None:
         "watched",
     ):
         connection.execute("DROP TABLE watched")
+
+
+def _upgrade_schema(connection: sqlite3.Connection) -> None:
+    """Apply additive v6 identity columns and safely backfill known TMDb IDs."""
+    _add_column(connection, "movies", "identity_id integer references film_identities(id) on delete set null")
+    _add_column(connection, "personal_movie_metadata", "identity_id integer references film_identities(id) on delete set null")
+    _add_column(connection, "personal_movie_metadata", "metadata_status text not null default 'legacy'")
+    _add_column(connection, "personal_movie_metadata", "refresh_order integer not null default 0")
+    _add_column(connection, "personal_movie_metadata", "failure_category text")
+    _add_column(connection, "personal_movie_metadata", "failure_message text")
+    _add_column(connection, "personal_movie_metadata", "failure_count integer not null default 0")
+    _add_column(connection, "personal_movie_metadata", "last_failed_at text")
+    _add_column(connection, "collection_entries", "identity_id integer references film_identities(id) on delete set null")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_movies_identity ON movies(identity_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_personal_metadata_identity ON personal_movie_metadata(identity_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_collection_entries_identity ON collection_entries(identity_id)")
+    connection.execute(
+        """INSERT OR IGNORE INTO film_identities (tmdb_id, title, release_year)
+           SELECT tmdb_id, coalesce(tmdb_title, title), year FROM movies WHERE tmdb_id IS NOT NULL"""
+    )
+    connection.execute(
+        """UPDATE personal_movie_metadata SET metadata_status = CASE
+             WHEN status = 'complete' AND EXISTS (
+                 SELECT 1 FROM film_identities i
+                 WHERE i.id = personal_movie_metadata.identity_id
+                   AND i.metadata_fetched_at IS NOT NULL
+             ) THEN 'complete'
+             WHEN status = 'complete' THEN 'legacy'
+             WHEN status = 'pending' THEN 'pending'
+             ELSE 'unavailable' END
+           WHERE metadata_status IN ('pending', 'legacy')"""
+    )
+    connection.execute(
+        """INSERT OR IGNORE INTO film_identities (tmdb_id, title, release_year)
+           SELECT tmdb_id, source_title, source_year FROM collection_entries WHERE tmdb_id IS NOT NULL"""
+    )
+    connection.execute(
+        """INSERT OR IGNORE INTO film_identities (tmdb_id, title, release_year)
+           SELECT tmdb_id, source_title, source_year FROM personal_movie_metadata
+           WHERE tmdb_id IS NOT NULL"""
+    )
+    connection.execute(
+        """UPDATE movies SET identity_id = (
+               SELECT id FROM film_identities WHERE tmdb_id = movies.tmdb_id)
+           WHERE tmdb_id IS NOT NULL AND identity_id IS NULL"""
+    )
+    connection.execute(
+        """UPDATE collection_entries SET identity_id = (
+               SELECT id FROM film_identities WHERE tmdb_id = collection_entries.tmdb_id)
+           WHERE tmdb_id IS NOT NULL AND identity_id IS NULL"""
+    )
+    connection.execute(
+        """UPDATE collection_entries SET identity_id = (
+               SELECT identity_id FROM movies WHERE movies.id = collection_entries.canonical_movie_id)
+           WHERE canonical_movie_id IS NOT NULL AND identity_id IS NULL"""
+    )
+    connection.execute(
+        """UPDATE personal_movie_metadata SET identity_id = (
+               SELECT id FROM film_identities WHERE tmdb_id = personal_movie_metadata.tmdb_id)
+           WHERE tmdb_id IS NOT NULL AND identity_id IS NULL"""
+    )
+
+
+def _add_column(connection: sqlite3.Connection, table: str, definition: str) -> None:
+    column = definition.split()[0]
+    if column not in _table_columns(connection, table):
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
 
 
 def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
