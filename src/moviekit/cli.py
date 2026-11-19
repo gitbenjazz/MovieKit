@@ -525,6 +525,240 @@ def personal_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def personal_identity_status(args: argparse.Namespace) -> int:
+    from .application import GetPersonalIdentityStatus
+
+    try:
+        rows = GetPersonalIdentityStatus().execute(args.username)
+    except (OSError, sqlite3.Error) as exc:
+        print(f"Personal identity status failed: {exc}", file=sys.stderr)
+        return 1
+    if not rows:
+        print(f"No personal library found for {args.username}.")
+        return 0
+    print(f"Personal identity status: {args.username}")
+    for status, metadata_status, count in rows:
+        print(f"{status}/{metadata_status}: {count}")
+    return 0
+
+
+def personal_unresolved(args: argparse.Namespace) -> int:
+    from .application import ListUnresolvedPersonalIdentities
+
+    try:
+        rows = ListUnresolvedPersonalIdentities().execute(args.username)
+    except (OSError, sqlite3.Error) as exc:
+        print(f"Personal unresolved identities failed: {exc}", file=sys.stderr)
+        return 1
+    if not rows:
+        print("No unresolved personal identities.")
+        return 0
+    for title, year, status, tmdb_id, metadata_status, category, message in rows:
+        suffix = f"; TMDb {tmdb_id}" if tmdb_id is not None else ""
+        failure = f"; {category}: {message}" if category else ""
+        print(f"{title} ({year if year is not None else 'unknown'}): {status}/{metadata_status}{suffix}{failure}")
+    return 0
+
+
+def _analytics_report(username):
+    from .application import GetAnalyticsReport
+
+    try:
+        return GetAnalyticsReport().execute(username), None
+    except (OSError, sqlite3.Error) as exc:
+        return None, f"Personal analytics unavailable: {exc}. Import a personal library first."
+
+
+def analytics_summary(args: argparse.Namespace) -> int:
+    report, error = _analytics_report(args.username)
+    if error:
+        print(error, file=sys.stderr)
+        return 1
+    if report is None:
+        print(f"No personal library found for {args.username}.")
+        return 0
+    stats = report.stats
+    print(f"Analytics summary: {report.username}")
+    print(f"Unique watched films: {stats.watched}")
+    print(f"Viewing events: {stats.watch_events}")
+    print(f"Explicit rewatch events: {stats.rewatch_events} ({stats.rewatched_movies} films)")
+    print(f"Personal films without canonical link: {report.unmatched_personal_movies}/{stats.movies}")
+    print(f"Genre metadata coverage: {stats.genre_coverage}/{stats.movies}")
+    print(f"Director metadata coverage: {stats.director_coverage}/{stats.movies}")
+    print(f"Actor metadata coverage: {stats.actor_coverage}/{stats.movies}")
+    _print_pairs("Watched films by release decade", report.watched_decades, suffix="s")
+    _print_groups("Watched films by genre", stats.genres)
+    _print_groups("Most frequently watched directors (top 10)", stats.directors, limit=10)
+    _print_groups("Most frequently watched actors (top 10)", stats.actors, limit=10)
+    _print_pairs("Viewing activity by calendar year", stats.activity_by_year)
+    print(f"Undated or invalid viewing events: {stats.undated_events}")
+    return 0
+
+
+def analytics_taste(args: argparse.Namespace) -> int:
+    report, error = _analytics_report(args.username)
+    if error:
+        print(error, file=sys.stderr)
+        return 1
+    if report is None:
+        print(f"No personal library found for {args.username}.")
+        return 0
+    taste = report.taste
+    print(f"Taste profile: {report.username}")
+    if not taste.ratings_available:
+        print("Explicit preference inference unavailable: no valid Letterboxd ratings.")
+        print("Observed viewing behavior remains available through `moviekit analytics summary`.")
+        return 0
+    print(f"Rating scale: {taste.rating_scale}")
+    print(f"Rated films: {taste.rated_movies}; average: {taste.average_rating:.2f}/5")
+    print("Rating distribution:")
+    for rating, count in taste.distribution:
+        print(f"  {rating:.1f}: {count}")
+    _print_taste_groups("Highest-rated genres", taste.genres, limit=10)
+    _print_favorite_taste_groups("Favorite genres by likes", taste.genres)
+    _print_taste_groups("Highest-rated directors", taste.directors, limit=10)
+    _print_favorite_taste_groups("Favorite directors by likes", taste.directors)
+    _print_taste_groups("Highest-rated actors", taste.actors, limit=10)
+    _print_favorite_taste_groups("Favorite actors by likes", taste.actors)
+    _print_taste_groups("Rated release decades", taste.decades)
+    return 0
+
+
+def analytics_collections(args: argparse.Namespace) -> int:
+    report, error = _analytics_report(args.username)
+    if error:
+        print(error, file=sys.stderr)
+        return 1
+    if report is None:
+        print(f"No personal library found for {args.username}.")
+        return 0
+    for progress in report.collections:
+        coverage = _percent(progress.coverage_percent)
+        completed = _percent(progress.progress_percent)
+        print(f"{progress.slug}: {progress.name}")
+        print(f"  Editorial entries: {progress.editorial_entries}")
+        print(f"  Resolved film identities: {progress.resolved_films}/{progress.editorial_entries} ({coverage} coverage)")
+        print(f"  Watched resolved films: {progress.watched_resolved_films}/{progress.resolved_films} ({completed} progress)")
+        print(f"  Unwatched resolved films: {progress.unwatched_resolved_films}")
+        print(f"  Unresolved entries: {progress.unresolved_entries}; ambiguous: {progress.ambiguous_entries}; "
+              f"grouped: {progress.grouped_entries}")
+        if progress.grouped_entries:
+            print("  Grouped entries are not counted as complete from a single watched film.")
+    return 0
+
+
+def analytics_profile(args: argparse.Namespace) -> int:
+    if args.format != "json":
+        print("moviekit analytics profile: error: only --format json is supported", file=sys.stderr)
+        return 2
+    report, error = _analytics_report(args.username)
+    if error:
+        print(error, file=sys.stderr)
+        return 1
+    if report is None:
+        print(f"No personal library found for {args.username}.", file=sys.stderr)
+        return 2
+    print(json.dumps(_profile_json(report), indent=2, sort_keys=True))
+    return 0
+
+
+def _print_pairs(title, pairs, suffix=""):
+    print(f"{title}:")
+    for name, count in pairs:
+        print(f"  {name}{suffix}: {count}")
+    if not pairs:
+        print("  No data")
+
+
+def _print_groups(title, groups, limit=None):
+    print(f"{title}:")
+    ranked = sorted(groups, key=lambda item: (-item.watched, item.name.casefold()))
+    if limit is not None:
+        ranked = ranked[:limit]
+    for group in ranked:
+        print(f"  {group.name}: {group.watched}")
+    if not groups:
+        print("  No metadata")
+
+
+def _print_taste_groups(title, groups, limit=None):
+    supported = [group for group in groups if group.rated >= 3]
+    ranked = sorted(supported, key=lambda item: (-item.average_rating, -item.rated, item.name.casefold()))
+    if limit is not None:
+        ranked = ranked[:limit]
+    print(f"{title} (minimum 3 rated films):")
+    for group in ranked:
+        print(f"  {group.name}: {group.average_rating:.2f}/5 ({group.rated} rated, {group.evidence} evidence)")
+    if not supported:
+        print("  Insufficient evidence")
+
+
+def _print_favorite_taste_groups(title, groups, limit=10):
+    ranked = sorted((group for group in groups if group.liked),
+                    key=lambda item: (-item.liked, -item.rated, item.name.casefold()))[:limit]
+    print(f"{title} (top {limit}):")
+    for group in ranked:
+        print(f"  {group.name}: {group.liked} liked films ({group.rated} rated, {group.evidence} evidence)")
+    if not ranked:
+        print("  No liked films with metadata")
+
+
+def _percent(value):
+    return "N/A" if value is None else f"{value:.1f}%"
+
+
+def _profile_json(report):
+    stats, taste = report.stats, report.taste
+    def taste_groups(groups):
+        return [{"name": group.name, "rated_films": group.rated, "liked_films": group.liked,
+                 "average_rating": group.average_rating, "evidence": group.evidence}
+                for group in groups]
+    limitations = []
+    if not taste.ratings_available:
+        limitations.append("No valid personal ratings; explicit preference inference is unavailable.")
+    if report.unmatched_personal_movies:
+        limitations.append("Unmatched personal films are included in viewing totals but lack canonical metadata.")
+    if any(progress.grouped_entries for progress in report.collections):
+        limitations.append("Grouped editorial entries cannot be completed from one watched film.")
+    return {
+        "schema_version": "moviekit.personal-profile.v1",
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "username": report.username,
+        "data_coverage": {
+            "library_movies": stats.movies, "unique_watched_films": stats.watched,
+            "rated_films": stats.rated, "liked_films": stats.liked,
+            "linked_personal_movies": report.linked_personal_movies,
+            "unmatched_personal_movies": report.unmatched_personal_movies,
+            "genre_metadata_movies": stats.genre_coverage,
+            "director_metadata_movies": stats.director_coverage,
+            "actor_metadata_movies": stats.actor_coverage,
+        },
+        "viewing_behavior": {
+            "viewing_events": stats.watch_events, "explicit_rewatch_events": stats.rewatch_events,
+            "rewatched_films": stats.rewatched_movies, "activity_by_year": dict(stats.activity_by_year),
+            "release_decades": {f"{decade}s": count for decade, count in report.watched_decades},
+            "undated_or_invalid_events": stats.undated_events,
+        },
+        "explicit_preferences": {
+            "available": taste.ratings_available, "rating_scale": taste.rating_scale,
+            "average_rating": taste.average_rating, "rating_distribution": dict(taste.distribution),
+            "genres": taste_groups(taste.genres), "directors": taste_groups(taste.directors),
+            "actors": taste_groups(taste.actors),
+            "release_decades": taste_groups(taste.decades),
+        },
+        "collection_progress": [
+            {"slug": item.slug, "editorial_entries": item.editorial_entries,
+             "resolved_films": item.resolved_films, "watched_resolved_films": item.watched_resolved_films,
+             "unwatched_resolved_films": item.unwatched_resolved_films,
+             "unresolved_entries": item.unresolved_entries, "ambiguous_entries": item.ambiguous_entries,
+             "grouped_entries": item.grouped_entries, "coverage_percent": item.coverage_percent,
+             "progress_percent_among_resolved": item.progress_percent}
+            for item in report.collections
+        ],
+        "limitations": limitations,
+    }
+
+
 def personal_stats(args: argparse.Namespace) -> int:
     from .application import GetPersonalStats
     from .personal_analytics_service import PersonalAnalyticsService
@@ -565,6 +799,7 @@ def personal_stats(args: argparse.Namespace) -> int:
     for label, groups, coverage in (
         ("genres", stats.genres, stats.genre_coverage),
         ("directors", stats.directors, stats.director_coverage),
+        ("actors", stats.actors, stats.actor_coverage),
     ):
         print(f"{label.capitalize()} metadata coverage: {coverage}/{stats.movies} library movies")
         print(f"Highest-rated {label} (top 5):")
@@ -688,6 +923,21 @@ def build_parser() -> argparse.ArgumentParser:
     personal_stats_parser = personal_commands.add_parser("stats", help="Show local personal analytics")
     personal_stats_parser.add_argument("--username", required=True)
     personal_stats_parser.set_defaults(func=personal_stats)
+
+    analytics_parser = subparsers.add_parser("analytics", help="Read-only personal viewing analytics")
+    analytics_commands = analytics_parser.add_subparsers(dest="analytics_command", required=True)
+    for name, function, help_text in (
+        ("summary", analytics_summary, "Show viewing behavior and metadata coverage"),
+        ("taste", analytics_taste, "Show rating-backed personal taste evidence"),
+        ("collections", analytics_collections, "Show progress for curated collections"),
+    ):
+        command = analytics_commands.add_parser(name, help=help_text)
+        command.add_argument("--username", required=True)
+        command.set_defaults(func=function)
+    profile_parser = analytics_commands.add_parser("profile", help="Emit a versioned personal profile")
+    profile_parser.add_argument("--username", required=True)
+    profile_parser.add_argument("--format", required=True, choices=("json",))
+    profile_parser.set_defaults(func=analytics_profile)
 
     for command in ("providers", "chat"):
         subparser = subparsers.add_parser(command)
