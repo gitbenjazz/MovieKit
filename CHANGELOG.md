@@ -2,6 +2,25 @@
 
 All notable changes to MovieKit are documented here.
 
+## v0.4.0
+
+### Added
+
+- Curated collection support with explicit user-supplied CSV imports and
+  collection-aware recommendation filtering.
+- Read-only personal analytics for viewing activity, ratings, rewatches, taste
+  evidence, and canonical collection progress.
+- Universal film identities backed by TMDb IDs, with normalized genre,
+  director, and actor credits kept separate from canonical movie ownership.
+
+### Changed
+
+- Personal metadata enrichment is resumable, reports actionable progress, and
+  retains persistent diagnostics for failed TMDb or metadata requests.
+- Personal databases, Letterboxd exports, backups, generated package metadata,
+  and the unlicensed development transcription are excluded from version
+  control and distribution artifacts.
+
 ## v0.3.9
 
 Prepared as the bulk synchronization release.
